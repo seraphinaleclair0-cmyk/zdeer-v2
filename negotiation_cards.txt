@@ -1,36 +1,85 @@
-[初次感兴趣]
-- 固定费用 $200-$500（视粉丝量和互动率）
-- 额外 15% 销售佣金，无上限
-- 免费寄送 Zdeer 空气净化器产品
-- 创意自由度高，不强制脚本
-- 长期合作优先考虑
+[产品基础信息]
+- 品牌：Zdeer
+- 产品：Electronic Mouth Spray（电子口腔喷雾）
+- 核心卖点：micro-mist technology，喷雾细腻连续，能形成明显视觉效果，适合 TikTok 前 3 秒抓注意力。
+- 场景：daily fresh breath、GRWM、purse essentials、date night、after coffee / meals、school / work bag、beauty routine、self-care routine。
+- 热门参考视频：https://www.tiktok.com/@mcamila0301/video/7640311080094403854
+- 产品链接：https://www.tiktok.com/t/ZP9FC6gReGeLS-sNat4/
+- 默认合作形式：paid TikTok collaboration + free sample + 15% organic commission + possible ad budget after posting.
+- 品牌语气：友好、直接、尊重达人报价，不压价太硬，不承诺不确定的数据。
 
-[价格谈判中]
-- 报价区间灵活：$300-$800
-- 广告投放支持：我们可以用你的内容做付费推广，增加你的曝光
-- 佣金提升至 20%（替代部分固定费）
-- 可分期付款：发布前付 50%，发布后付 50%
+[首次感兴趣]
+- 先感谢对方回复，确认我们很希望合作。
+- 重点说明：我们可以提供样品、固定费用、15% organic commission，并可能在内容发布后用广告预算放大视频曝光。
+- 如果达人还没报价：礼貌询问 rate card / rates，并请她确认 TikTok handle、shipping country。
+- 如果达人已表达愿意试样：下一步收集 shipping info，不要立刻要求发视频。
+- 可用回复方向：Thank you so much for getting back to me. We would love to explore this with you. Could you please share your rate for one TikTok video, and let me know your shipping country?
 
-[犹豫不决]
-- 提议先免费寄样品，她试用后再决定是否合作，无任何费用压力
-- 30天同类独家：合作期间不找同类达人
-- 无最低观看量要求，不会因数据不好扣款
-- 可以先做一条 TikTok，看效果再决定长期合作
+[达人询价 / 报价]
+- 如果对方问预算：不要先报死价，先问她的 standard rate；如果必须给范围，可说 budget depends on deliverables and usage rights.
+- 默认可接受结构：fixed fee + 15% organic commission。
+- 可提到：if the content performs well, we may also allocate ad budget to amplify the video afterward.
+- 如果报价偏高：不要直接拒绝，先问是否包含 usage rights、Spark Ads / ad authorization、posting timeline、number of videos。
+- 还价措辞：Our budget for this first test is a bit tighter, but we can combine a fixed fee with 15% commission and potential paid amplification after posting.
+- 待填写：低粉达人预算范围
+- 待填写：中粉达人预算范围
+- 待填写：高粉达人预算范围
 
-[高粉达人 500k+]
-- 固定费用 $800-$2000
-- 联名内容机会（产品上写达人名字/logo）
-- 品牌大使计划，季度合作
-- 专属折扣码，方便她的粉丝购买
+[达人要求免费样品]
+- 可以接受先寄样品给达人试用。
+- 需要强调：sample is free, no pressure to post before confirming collaboration details.
+- 收集信息：full name、shipping address、phone number、email、TikTok handle。
+- 如果需要 TikTok Shop 下单流程，说明会提供 product link / sample instructions。
+- 可用回复方向：We can definitely arrange a sample for you to try first. Could you please send your full shipping details and phone number for delivery?
 
-[已拒绝可挽回]
-- 保持友好，表示理解
-- 告知下次新品发布会第一时间联系她
-- 可以询问她更倾向的合作方式，下次调整
-- 邀请加入 Zdeer 达人社群，保持联系
+[达人询问产品 / 卖点]
+- 重点讲 micro-mist、portable、fresh breath、visual effect、easy to show in short-form video。
+- 不要做医疗功效承诺，不说 cure / treat / medical claims。
+- 可以强调内容角度：before going out、after coffee、bag essential、quick close-up spray shot、reaction shot。
+- 可用回复方向：The product is an electronic mouth spray designed for quick fresh-breath moments. The micro-mist spray creates a clean, eye-catching visual that works really well for TikTok hooks.
 
-[已成交]
-- 感谢合作，确认发货地址和时间
-- 说明发布时间要求（建议收到产品后2周内）
-- 提供专属折扣码格式（如 ELOISE15）
-- 说明付款方式（PayPal / 银行转账）
+[达人问内容要求]
+- 默认要求简单：1 TikTok video，真实试用体验，展示产品外观和喷雾效果，包含产品链接/店铺引导。
+- 不强制逐字脚本，保留创意自由。
+- 建议内容节奏：hook in first 3 seconds、show product、show spray effect、explain use case、CTA。
+- 待填写：视频时长要求
+- 待填写：是否要求挂 TikTok Shop 链接
+- 待填写：是否需要草稿审核
+- 待填写：发布时间要求
+
+[达人问广告授权 / Spark Ads]
+- 可以说我们可能会在视频发布后投放广告放大曝光。
+- 不要默认永久授权。若达人问授权期限，建议先谈 30 days / 60 days。
+- 如果达人收取 usage fee，需要请她单独列明。
+- 可用回复方向：For ad usage, we can discuss a short usage window separately. For this first collaboration, we are mainly focused on the organic TikTok post, with possible paid amplification afterward.
+
+[达人犹豫不决]
+- 降低压力：可以先看产品链接和参考视频，也可以先寄样品。
+- 强调不限制创作风格，不要求夸大效果。
+- 不催促，不制造强压迫感。
+- 可用回复方向：No pressure at all. I’m happy to send over the product details first, and if it feels aligned with your content, we can discuss rates and next steps.
+
+[达人拒绝]
+- 友好感谢，保留未来合作机会。
+- 可以问她未来更适合的产品方向或合作方式。
+- 不要继续强推。
+- 可用回复方向：Totally understand, and thank you for considering it. I’d love to stay in touch for future products that may be a better fit for your content.
+
+[已成交 / 下一步]
+- 确认 deliverables：number of videos、platform、posting date、usage rights、fee、commission。
+- 收集 shipping details：full name、address、phone、email。
+- 确认付款方式：PayPal / bank transfer / other。
+- 待填写：付款节点（发布前/发布后/分阶段）
+- 待填写：是否需要 invoice
+- 待填写：样品发货时效
+- 可用回复方向：Amazing, we’d love to move forward. Could you please send your shipping details, preferred payment method, and confirm the deliverables we discussed?
+
+[邮件回复风格]
+- 英文回复要自然、简洁、像真人 BD，不要太长。
+- 开头先回应对方具体问题，再推进下一步。
+- 每封邮件只问 1-3 个必要问题，避免一次问太多。
+- 不要编造库存、物流时效、付款政策、精确预算；不确定就说 we can confirm internally。
+- 结尾使用：
+Warm regards,
+Eloise
+Creator Partnerships | zdeer
