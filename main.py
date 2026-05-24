@@ -130,6 +130,13 @@ def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
     prompt = f"""你是一个 TikTok 达人合作 BD 助手。
 以下是达人发来的回复邮件，请完成三件事。
 
+语言规则：
+- summary 必须写中文，方便团队内部阅读。
+- stage 必须写中文，并且只能从给定选项中选择。
+- suggested_reply 必须写自然、专业、简洁的美式英语，像美国品牌 BD 真人写的邮件。
+- suggested_reply 不要出现中文，不要中英混杂，不要直译中文表达。
+- 不要编造预算、物流、合同、付款、库存等未提供的信息。
+
 邮件内容：
 {reply_body}
 
@@ -138,9 +145,9 @@ def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
 
 请严格按以下 JSON 格式返回，不要加任何其他内容：
 {{
-  "summary": "用1-2句中文概括回复的核心内容",
+  "summary": "用1-2句中文概括回复的核心内容，必须是中文",
   "stage": "从以下选一个：初次感兴趣 / 价格谈判中 / 犹豫不决 / 已拒绝可挽回 / 已成交 / 其他",
-  "suggested_reply": "根据阶段和筹码库，用英文写一封完整的建议回复邮件"
+  "suggested_reply": "根据阶段和筹码库，用美式英语写一封完整的建议回复邮件"
 }}
 
 可用筹码库：
@@ -163,14 +170,18 @@ def ai_regenerate_reply(instruction: str, history: str, stage: str, cards: str) 
     prompt = f"""你是一个 TikTok 达人合作 BD 助手。
 
 当前谈判阶段：{stage}
-过往沟通记录：{history if history else "无"}
+过往沟通记录（中文内部记录）：{history if history else "无"}
 我的指令（中文）：{instruction}
 
 可用筹码库：
 {cards}
 
-请根据以上信息，用英文写一封完整的专业回复邮件。
-只返回邮件正文，不要加任何说明。
+请根据以上信息，用自然、专业、简洁的美式英语写一封完整回复邮件。
+要求：
+- 只返回英文邮件正文，不要加任何说明。
+- 不要出现中文，不要中英混杂。
+- 不要直译中文指令，要写成美国达人能自然理解的表达。
+- 不要编造预算、物流、合同、付款、库存等未提供的信息。
 """
     response = model.generate_content(prompt)
     return response.text.strip()
