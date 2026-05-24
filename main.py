@@ -400,18 +400,18 @@ def main():
         send_flag   = row[9].strip() if len(row) > 9 else ""
         history     = row[4].strip() if len(row) > 4 else ""
 
-        if send_flag != "✅":
-            continue
-
-        # 如果有指令，重新生成回复
+        # 如果有指令且还没有草稿，先生成回复草稿；不要求立刻发送。
         final_reply = ai_reply
-        if instruction:
+        if instruction and not ai_reply:
             try:
                 print(f"  根据指令重新生成回复：{instruction}")
                 final_reply = ai_regenerate_reply(instruction, history, stage, cards)
                 update_cell(sheets, REPLIES_SHEET, i, 9, final_reply)
             except Exception as e:
                 print(f"  ⚠️ 重新生成失败：{e}")
+
+        if send_flag != "✅":
+            continue
 
         if not final_reply or not to_email:
             continue
