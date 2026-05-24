@@ -32,7 +32,7 @@ OUTBOX_SHEET  = "待发名单"
 REPLIES_SHEET = "沟通管理"
 
 GEMINI_API_KEY   = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL     = "gemini-2.0-flash"
+GEMINI_MODEL     = "gemini-3.1-flash-lite"
 
 NEGOTIATION_CARDS = "negotiation_cards.txt"
 TOKEN_JSON        = "token.json"
