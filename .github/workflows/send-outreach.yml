@@ -1,0 +1,34 @@
+name: 发开发邮件和跟进
+on:
+  schedule:
+    # 每天北京时间 00:00（UTC 16:00）
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 安装依赖
+        run: |
+          pip install \
+            google-auth \
+            google-auth-oauthlib \
+            google-auth-httplib2 \
+            google-api-python-client \
+            google-generativeai
+      - name: 发开发邮件和跟进
+        env:
+          GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          GMAIL_PASS_1:      ${{ secrets.GMAIL_PASS_1 }}
+          GMAIL_PASS_2:      ${{ secrets.GMAIL_PASS_2 }}
+          GMAIL_PASS_3:      ${{ secrets.GMAIL_PASS_3 }}
+          GMAIL_PASS_4:      ${{ secrets.GMAIL_PASS_4 }}
+        run: python send_outreach.py
