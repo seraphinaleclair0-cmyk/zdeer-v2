@@ -1,53 +1,47 @@
 def get_outreach_subject(name: str) -> str:
-    return f"Collaboration Opportunity with Zdeer | {name}"
+    return "❤️𝑻𝒊𝒌𝑻𝒐𝒌 𝒑𝒂𝒊𝒅 𝒄𝒐𝒍𝒍𝒂𝒃𝒐𝒓𝒂𝒕𝒊𝒐𝒏 – 𝒁𝒅𝒆𝒆𝒓 𝒗𝒊𝒓𝒂𝒍 𝒆𝒍𝒆𝒄𝒕𝒓𝒐𝒏𝒊𝒄 𝒎𝒐𝒖𝒕𝒉 𝒔𝒑𝒓𝒂𝒚 ✨"
 
 
 def get_outreach_body(name: str, tiktok_url: str) -> str:
-    return f"""Hi {name},
+    return f"""Hi {name}！
 
-I hope this message finds you well!
+Your videos {tiktok_url} always have the best energy and such a clean, relatable aesthetic!
 
-I'm reaching out from Zdeer — we create premium air purifiers designed for modern homes and people who care about clean air and healthy living.
+I’m Eloise from Zdeer. We are a brand dedicated to personal care tech, and we recently launched an Electronic Mouth Spray that is taking TikTok by storm. Unlike traditional sprays, it uses micro-mist technology to deliver an instant, continuous burst of freshness, creating a highly engaging visual effect that naturally grabs viewers' attention in the first 3 seconds.
+🌟🌟
+Hot video：https://www.tiktok.com/@mcamila0301/video/7640311080094403854
+product link：https://www.tiktok.com/t/ZP9FC6gReGeLS-sNat4/
 
-We came across your TikTok ({tiktok_url}) and love your content style — it's exactly the kind of authentic voice our audience connects with.
+Given your incredible knack for honest, lifestyle-driven reviews, we believe this product would seamlessly fit into your content.
 
-We'd love to explore a collaboration with you! Here's what we're offering:
+We are fully prepared to support this collaboration with a fixed fee + 15% organic commission, along with a dedicated ad budget to amplify your video's exposure afterward.
 
-✅ Fixed fee + 15% commission on sales you drive
-✅ Free Zdeer product to keep and review
-✅ Creative freedom — you tell the story your way
-✅ Potential for ongoing, long-term partnership
-
-No complicated requirements. Just honest content from someone who genuinely tries the product.
-
-Would you be open to a quick chat or email exchange to explore this further?
+Would you be open to trying a sample and partnering with us? If so, please let us know your rates❤️
 
 Looking forward to hearing from you!
 
 Warm regards,
 Eloise
-Creator Partnerships | Zdeer
-pr@zdeer.org
+Creator Partnerships | zdeer
 """
 
 
 def get_followup_subject(name: str) -> str:
-    return f"Following Up | Zdeer x {name} Collaboration"
+    return f"Following Up | Zdeer x {name} TikTok Collaboration"
 
 
 def get_followup_body(name: str, tiktok_url: str) -> str:
     return f"""Hi {name},
 
-I wanted to follow up on my previous email about a potential collaboration with Zdeer!
+I wanted to follow up on my previous email about a potential TikTok collaboration with Zdeer.
 
 I know things get busy, so I just wanted to make sure this didn't get lost in your inbox.
 
-We genuinely think your content on TikTok ({tiktok_url}) would be a great fit for our brand, and we'd love to make this work for you.
+We genuinely think your content on TikTok ({tiktok_url}) would be a great fit for our Electronic Mouth Spray, and we'd love to make this work for you with a fixed fee + 15% organic commission.
 
-If you're interested or have any questions, just hit reply — I'm happy to chat!
+If you're interested, please feel free to send over your rates and we can discuss the details.
 
 Warm regards,
 Eloise
-Creator Partnerships | Zdeer
-pr@zdeer.org
+Creator Partnerships | zdeer
 """
