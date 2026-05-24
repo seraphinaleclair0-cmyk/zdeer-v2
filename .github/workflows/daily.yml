@@ -1,25 +1,20 @@
 name: Zdeer 每日自动运行
-
 on:
   schedule:
-    # 每天 UTC 16:00 = 北京时间 00:00（中国午夜）
-    - cron: "0 16 * * *"
+    # 每天 3 次：北京时间 08:00 / 12:00 / 17:00
+    - cron: "0 0,4,9 * * *"
   workflow_dispatch:  # 允许手动触发测试
-
 jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
-
       - name: 设置 Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: 安装依赖
         run: |
           pip install \
@@ -28,7 +23,6 @@ jobs:
             google-auth-httplib2 \
             google-api-python-client \
             google-generativeai
-
       - name: 运行主程序
         env:
           GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY }}

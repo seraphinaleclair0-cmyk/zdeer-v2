@@ -1,22 +1,17 @@
 name: 翻译现有沟通内容
-
 on:
   workflow_dispatch:
-
 jobs:
   translate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
-
       - name: 设置 Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: 安装依赖
         run: |
           pip install \
@@ -25,7 +20,6 @@ jobs:
             google-auth-httplib2 \
             google-api-python-client \
             google-generativeai
-
       - name: 翻译现有 D/E 列
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

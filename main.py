@@ -1,10 +1,11 @@
 """
 main.py — 核心逻辑
-GitHub Actions 每天运行一次，完成：
+GitHub Actions 每天 8:00 / 12:00 / 17:00 运行，完成：
 1. 检查「待发名单」有无新的 ✅ → 发邮件
 2. 检查无回复达人 → 发跟进邮件
-3. 抓取新回复 → AI处理 → 写入「沟通管理」
-4. 检查「沟通管理」有无新的 ✅ → 发回复邮件
+3. 抓取新回复 → 匹配待开发名单 → AI处理 → 写入「沟通管理」
+4. 扫描已发邮件 → 更新E列过往沟通
+5. 检查「沟通管理」有无新的 ✅ → 发回复邮件
 """
 
 import base64
@@ -46,6 +47,44 @@ from template import (
 OUTBOX_COLS = ["达人名字", "邮箱", "TikTok链接", "发件邮箱", "发送", "状态", "发送时间", "跟进次数"]
 # 沟通管理列（A~K）
 REPLIES_COLS = ["日期", "达人名字", "邮箱", "回复摘要", "过往沟通", "当前阶段", "状态", "你的指令", "AI生成回复", "发送", "收件邮箱"]
+# 系统配置sheet名
+CONFIG_SHEET = "系统配置"
+
+# ── 时间戳管理 ────────────────────────────────────────────────────
+
+def get_last_run_time(sheets) -> datetime:
+    """从系统配置sheet读取上次运行时间，默认返回24小时前"""
+    try:
+        result = sheets.spreadsheets().values().get(
+            spreadsheetId=SHEET_ID,
+            range=f"{CONFIG_SHEET}!A2",
+        ).execute()
+        values = result.get("values", [])
+        if values and values[0]:
+            return datetime.strptime(values[0][0], "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        pass
+    return datetime.utcnow() - timedelta(hours=24)
+
+
+def save_last_run_time(sheets):
+    """把当前时间写入系统配置sheet"""
+    try:
+        # 确保表头存在
+        sheets.spreadsheets().values().update(
+            spreadsheetId=SHEET_ID,
+            range=f"{CONFIG_SHEET}!A1",
+            valueInputOption="RAW",
+            body={"values": [["上次运行时间（UTC）"]]},
+        ).execute()
+        sheets.spreadsheets().values().update(
+            spreadsheetId=SHEET_ID,
+            range=f"{CONFIG_SHEET}!A2",
+            valueInputOption="RAW",
+            body={"values": [[datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")]]},
+        ).execute()
+    except Exception as e:
+        print(f"  ⚠️ 保存时间戳失败：{e}")
 
 # ── 邮件发送 ──────────────────────────────────────────────────────
 
@@ -54,7 +93,7 @@ def get_account_by_email(email: str) -> dict:
     for acc in EMAIL_ACCOUNTS:
         if acc["email"].lower() == email.lower():
             return acc
-    return EMAIL_ACCOUNTS[0]  # 默认第一个
+    return EMAIL_ACCOUNTS[0]
 
 
 def send_email(account: dict, to_email: str, subject: str, body: str) -> bool:
@@ -114,6 +153,21 @@ def append_row(sheets, sheet_name: str, row: list):
         body={"values": [row]},
     ).execute()
 
+
+def append_to_history(sheets, row_index: int, new_entry: str):
+    """往沟通管理E列追加一条记录，用 | 分隔"""
+    result = sheets.spreadsheets().values().get(
+        spreadsheetId=SHEET_ID,
+        range=f"{REPLIES_SHEET}!E{row_index}",
+    ).execute()
+    existing = ""
+    values = result.get("values", [])
+    if values and values[0]:
+        existing = values[0][0].strip()
+
+    updated = f"{existing} | {new_entry}" if existing else new_entry
+    update_cell(sheets, REPLIES_SHEET, row_index, 5, updated)
+
 # ── Gemini AI ─────────────────────────────────────────────────────
 
 def load_negotiation_cards() -> str:
@@ -123,7 +177,25 @@ def load_negotiation_cards() -> str:
     return ""
 
 
+def ai_summarize_sent(body: str) -> str:
+    """把我发出的邮件正文总结成中文摘要（用于E列记录）"""
+    time.sleep(4)
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel(GEMINI_MODEL)
+    prompt = f"""请用1句中文简洁总结以下邮件的核心内容，供内部记录使用。
+只返回总结内容，不要加任何前缀或说明。
+
+邮件内容：
+{body[:1000]}
+"""
+    try:
+        return model.generate_content(prompt).text.strip()
+    except Exception:
+        return "（摘要生成失败）"
+
+
 def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
+    time.sleep(4)
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel(GEMINI_MODEL)
 
@@ -164,6 +236,7 @@ def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
 
 def ai_regenerate_reply(instruction: str, history: str, stage: str, cards: str) -> str:
     """根据你的中文指令重新生成英文回复"""
+    time.sleep(4)
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel(GEMINI_MODEL)
 
@@ -186,10 +259,11 @@ def ai_regenerate_reply(instruction: str, history: str, stage: str, cards: str) 
     response = model.generate_content(prompt)
     return response.text.strip()
 
-# ── 抓取 Gmail 回复 ───────────────────────────────────────────────
+# ── 抓取 Gmail 收件箱回复 ─────────────────────────────────────────
 
-def fetch_new_replies(gmail) -> list[dict]:
-    since = (datetime.utcnow() - timedelta(days=1)).strftime("%Y/%m/%d")
+def fetch_new_replies(gmail, last_run: datetime) -> list[dict]:
+    """抓取上次运行时间之后收到的新邮件"""
+    since = last_run.strftime("%Y/%m/%d")
     all_replies = []
 
     for account in EMAIL_ACCOUNTS:
@@ -200,7 +274,7 @@ def fetch_new_replies(gmail) -> list[dict]:
             ).execute()
             messages = result.get("messages", [])
         except Exception as e:
-            print(f"  ⚠️ 读取 {account['email']} 失败：{e}")
+            print(f"  ⚠️ 读取 {account['email']} 收件箱失败：{e}")
             continue
 
         for msg_ref in messages:
@@ -213,19 +287,12 @@ def fetch_new_replies(gmail) -> list[dict]:
             from_email = from_match.group(0) if from_match else ""
             date_str = headers.get("Date", "")
 
-            body = ""
-            payload = msg["payload"]
-            if "parts" in payload:
-                for part in payload["parts"]:
-                    if part["mimeType"] == "text/plain":
-                        data = part["body"].get("data", "")
-                        body = base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
-                        break
-            elif "body" in payload:
-                data = payload["body"].get("data", "")
-                body = base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
+            # 过滤掉自己发给自己的
+            own_emails = [acc["email"].lower() for acc in EMAIL_ACCOUNTS]
+            if from_email.lower() in own_emails:
+                continue
 
-            body = body[:1500].strip()
+            body = _extract_body(msg)
             if from_email and body:
                 all_replies.append({
                     "from_email": from_email,
@@ -237,14 +304,95 @@ def fetch_new_replies(gmail) -> list[dict]:
     return all_replies
 
 
+def fetch_sent_emails(gmail, last_run: datetime) -> list[dict]:
+    """抓取上次运行时间之后我发出的邮件"""
+    since = last_run.strftime("%Y/%m/%d")
+    all_sent = []
+
+    for account in EMAIL_ACCOUNTS:
+        query = f"from:{account['email']} after:{since} in:sent"
+        try:
+            result = gmail.users().messages().list(
+                userId="me", q=query, maxResults=50
+            ).execute()
+            messages = result.get("messages", [])
+        except Exception as e:
+            print(f"  ⚠️ 读取 {account['email']} 已发邮件失败：{e}")
+            continue
+
+        for msg_ref in messages:
+            msg = gmail.users().messages().get(
+                userId="me", id=msg_ref["id"], format="full"
+            ).execute()
+
+            headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
+            to_match = re.search(r"[\w.+-]+@[\w.+-]+\.\w+", headers.get("To", ""))
+            to_email = to_match.group(0) if to_match else ""
+            date_str = headers.get("Date", "")
+
+            # 过滤掉发给自己的
+            own_emails = [acc["email"].lower() for acc in EMAIL_ACCOUNTS]
+            if to_email.lower() in own_emails:
+                continue
+
+            body = _extract_body(msg)
+            if to_email and body:
+                all_sent.append({
+                    "to_email": to_email,
+                    "from_email": account["email"],
+                    "date": date_str,
+                    "body": body,
+                })
+
+    return all_sent
+
+
+def _extract_body(msg: dict) -> str:
+    """从Gmail消息中提取纯文本正文"""
+    body = ""
+    payload = msg["payload"]
+    if "parts" in payload:
+        for part in payload["parts"]:
+            if part["mimeType"] == "text/plain":
+                data = part["body"].get("data", "")
+                body = base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
+                break
+    elif "body" in payload:
+        data = payload["body"].get("data", "")
+        body = base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
+    return body[:1500].strip()
+
+
 def get_history_for_email(sheets, email: str) -> str:
     data = get_sheet_data(sheets, REPLIES_SHEET)
     items = []
     for row in data[1:]:
         if len(row) > 2 and row[2].strip().lower() == email.strip().lower():
-            if len(row) > 3:
-                items.append(f"[{row[0]}] {row[3]}")
-    return " | ".join(items[-3:])
+            if len(row) > 4 and row[4]:
+                items.append(row[4])
+    return items[-1] if items else ""
+
+# ── 待开发名单操作 ────────────────────────────────────────────────
+
+def find_in_outbox(outbox_data: list, email: str) -> tuple[int, dict]:
+    """在待开发名单中查找邮箱，返回(行号从2开始, 行数据dict)，找不到返回(0, {})"""
+    for i, row in enumerate(outbox_data[1:], start=2):
+        if len(row) > 1 and row[1].strip().lower() == email.strip().lower():
+            return i, {
+                "name": row[0].strip() if len(row) > 0 else "",
+                "email": row[1].strip() if len(row) > 1 else "",
+                "sender_email": row[3].strip() if len(row) > 3 else "",
+                "status": row[5].strip() if len(row) > 5 else "",
+            }
+    return 0, {}
+
+
+def find_in_replies(replies_data: list, email: str) -> int:
+    """在沟通管理中查找邮箱，返回行号（从2开始），找不到返回0"""
+    for i, row in enumerate(replies_data[1:], start=2):
+        if len(row) > 2 and row[2].strip().lower() == email.strip().lower():
+            return i
+    return 0
 
 # ── 主流程 ────────────────────────────────────────────────────────
 
@@ -255,6 +403,10 @@ def main():
     gmail  = build("gmail",  "v1", credentials=creds)
     sheets = build("sheets", "v4", credentials=creds)
     cards  = load_negotiation_cards()
+
+    # 读取上次运行时间
+    last_run = get_last_run_time(sheets)
+    print(f"  上次运行时间（UTC）：{last_run.strftime('%Y-%m-%d %H:%M:%S')}")
 
     # 确保表头存在
     ensure_headers(sheets, OUTBOX_SHEET,  OUTBOX_COLS)
@@ -267,18 +419,17 @@ def main():
     print("\n📤 检查待发名单...")
     sent_count = 0
 
-    for i, row in enumerate(outbox_data[1:], start=2):  # 从第2行开始，跳过表头
+    for i, row in enumerate(outbox_data[1:], start=2):
         if len(row) < 5:
             continue
 
-        name        = row[0].strip() if len(row) > 0 else ""
-        to_email    = row[1].strip() if len(row) > 1 else ""
-        tiktok_url  = row[2].strip() if len(row) > 2 else ""
+        name         = row[0].strip() if len(row) > 0 else ""
+        to_email     = row[1].strip() if len(row) > 1 else ""
+        tiktok_url   = row[2].strip() if len(row) > 2 else ""
         sender_email = row[3].strip() if len(row) > 3 else ""
-        send_flag   = row[4].strip() if len(row) > 4 else ""
-        status      = row[5].strip() if len(row) > 5 else ""
+        send_flag    = row[4].strip() if len(row) > 4 else ""
+        status       = row[5].strip() if len(row) > 5 else ""
 
-        # 只处理标了 ✅ 且还没发送的
         if send_flag == "✅" and status != "已发送":
             account = get_account_by_email(sender_email) if sender_email else EMAIL_ACCOUNTS[sent_count % len(EMAIL_ACCOUNTS)]
             subject = get_outreach_subject(name)
@@ -304,7 +455,6 @@ def main():
     # ── 2. 无回复达人发跟进邮件 ──────────────────────────────────
     print("\n📨 检查跟进邮件...")
 
-    # 收集已回复的邮箱
     replied_emails = set()
     for row in replies_data[1:]:
         if len(row) > 2:
@@ -314,15 +464,14 @@ def main():
         if len(row) < 7:
             continue
 
-        name       = row[0].strip()
-        to_email   = row[1].strip()
-        tiktok_url = row[2].strip()
+        name         = row[0].strip()
+        to_email     = row[1].strip()
+        tiktok_url   = row[2].strip()
         sender_email = row[3].strip() if len(row) > 3 else ""
-        status     = row[5].strip() if len(row) > 5 else ""
-        sent_time  = row[6].strip() if len(row) > 6 else ""
-        followup   = int(row[7].strip()) if len(row) > 7 and row[7].strip().isdigit() else 0
+        status       = row[5].strip() if len(row) > 5 else ""
+        sent_time    = row[6].strip() if len(row) > 6 else ""
+        followup     = int(row[7].strip()) if len(row) > 7 and row[7].strip().isdigit() else 0
 
-        # 条件：已发送 + 未回复 + 跟进次数<1 + 发出超过24小时
         if (
             status == "已发送"
             and to_email.lower() not in replied_emails
@@ -352,55 +501,130 @@ def main():
 
     # ── 3. 抓取新回复，AI处理，写入「沟通管理」─────────────────
     print("\n📬 抓取新回复...")
-    new_replies = fetch_new_replies(gmail)
+    new_replies = fetch_new_replies(gmail, last_run)
     print(f"  找到 {len(new_replies)} 封新回复")
 
-    # 已记录过的邮件（避免重复写入）
-    recorded = set()
-    for row in replies_data[1:]:
-        if len(row) > 2:
-            recorded.add(row[2].strip().lower())
+    # 重新读取最新数据
+    replies_data = get_sheet_data(sheets, REPLIES_SHEET)
+    outbox_data  = get_sheet_data(sheets, OUTBOX_SHEET)
 
     for reply in new_replies:
-        if reply["from_email"].lower() in recorded:
+        from_email = reply["from_email"].lower()
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        # 检查沟通管理是否已有这个达人
+        existing_row = find_in_replies(replies_data, from_email)
+        if existing_row:
+            # 已有 → 只追加D列摘要和E列过往沟通
+            print(f"  已有记录，追加回复摘要：{from_email}")
+            history = get_history_for_email(sheets, from_email)
+            try:
+                ai_result = ai_process_reply(reply["body"], history, cards)
+            except Exception as e:
+                print(f"  ⚠️ AI失败：{e}")
+                ai_result = {"summary": "AI处理失败", "stage": "其他", "suggested_reply": ""}
+
+            # 更新D列回复摘要
+            update_cell(sheets, REPLIES_SHEET, existing_row, 4,
+                        f"{today} 达人回复：{ai_result['summary']}")
+            # 追加E列过往沟通
+            append_to_history(sheets, existing_row,
+                              f"{today} 达人回复：{ai_result['summary']}")
+            # 更新AI生成回复
+            if ai_result["suggested_reply"]:
+                update_cell(sheets, REPLIES_SHEET, existing_row, 9, ai_result["suggested_reply"])
             continue
 
-        print(f"  AI处理：{reply['from_email']}")
-        history = get_history_for_email(sheets, reply["from_email"])
+        # 沟通管理没有 → 去待开发名单查
+        outbox_row_i, outbox_info = find_in_outbox(outbox_data, from_email)
 
+        history = get_history_for_email(sheets, from_email)
         try:
             ai_result = ai_process_reply(reply["body"], history, cards)
         except Exception as e:
             print(f"  ⚠️ AI失败：{e}")
             ai_result = {"summary": "AI处理失败", "stage": "其他", "suggested_reply": ""}
 
-        # 从待发名单匹配达人名字
-        name = ""
-        for row in outbox_data[1:]:
-            if len(row) > 1 and row[1].strip().lower() == reply["from_email"].lower():
-                name = row[0].strip()
-                break
+        name = outbox_info.get("name", "")
+        receiver_email = reply.get("to_email", "")
 
+        if outbox_row_i:
+            # 待开发名单找到 → 改状态为「已回复」
+            print(f"  待开发名单找到 {name}，改状态为已回复")
+            update_cell(sheets, OUTBOX_SHEET, outbox_row_i, 6, "已回复")
+
+        # 写入沟通管理新行
         new_row = [
-            datetime.now().strftime("%Y-%m-%d"),
+            today,
             name,
             reply["from_email"],
-            ai_result["summary"],
-            history,
+            f"{today} 达人回复：{ai_result['summary']}",
+            f"{today} 达人回复：{ai_result['summary']}",
             ai_result["stage"],
             "待回复",
             "",
             ai_result["suggested_reply"],
             "",
-            reply.get("to_email", ""),
+            receiver_email,
         ]
         append_row(sheets, REPLIES_SHEET, new_row)
-        recorded.add(reply["from_email"].lower())
+        print(f"  ✅ 写入沟通管理：{reply['from_email']}")
+
+        # 更新本地缓存，避免同一批次重复写入
+        replies_data = get_sheet_data(sheets, REPLIES_SHEET)
         time.sleep(1)
 
-    # ── 4. 处理「沟通管理」中标了 ✅ 的行 → 发回复邮件 ──────────
+    # ── 4. 扫描已发邮件，更新E列过往沟通 ────────────────────────
+    print("\n📤 扫描已发邮件...")
+    sent_emails = fetch_sent_emails(gmail, last_run)
+    print(f"  找到 {len(sent_emails)} 封已发邮件")
+
+    replies_data = get_sheet_data(sheets, REPLIES_SHEET)
+    outbox_data  = get_sheet_data(sheets, OUTBOX_SHEET)
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    for sent in sent_emails:
+        to_email = sent["to_email"].lower()
+
+        # 生成中文摘要
+        print(f"  处理已发邮件 → {to_email}")
+        summary = ai_summarize_sent(sent["body"])
+        entry = f"{today} 我回复：{summary}"
+
+        # 查沟通管理
+        existing_row = find_in_replies(replies_data, to_email)
+        if existing_row:
+            append_to_history(sheets, existing_row, entry)
+            print(f"  ✅ 追加到沟通管理E列")
+            replies_data = get_sheet_data(sheets, REPLIES_SHEET)
+            continue
+
+        # 查待开发名单
+        outbox_row_i, outbox_info = find_in_outbox(outbox_data, to_email)
+        name = outbox_info.get("name", "")
+
+        # 两边都没有 → 沟通管理新建一行
+        new_row = [
+            today,
+            name,
+            sent["to_email"],
+            f"{today} 我发邮：{summary}",
+            f"{today} 我发邮：{summary}",
+            "",
+            "待回复",
+            "",
+            "",
+            "",
+            sent.get("from_email", ""),
+        ]
+        append_row(sheets, REPLIES_SHEET, new_row)
+        print(f"  ✅ 新建行（主动发出）：{sent['to_email']}")
+        replies_data = get_sheet_data(sheets, REPLIES_SHEET)
+        time.sleep(1)
+
+    # ── 5. 处理「沟通管理」中标了 ✅ 的行 → 发回复邮件 ──────────
     print("\n💬 检查待发回复...")
-    replies_data = get_sheet_data(sheets, REPLIES_SHEET)  # 重新读取（刚写入了新数据）
+    replies_data = get_sheet_data(sheets, REPLIES_SHEET)
 
     for i, row in enumerate(replies_data[1:], start=2):
         if len(row) < 10:
@@ -412,8 +636,9 @@ def main():
         ai_reply    = row[8].strip() if len(row) > 8 else ""
         send_flag   = row[9].strip() if len(row) > 9 else ""
         history     = row[4].strip() if len(row) > 4 else ""
+        receiver    = row[10].strip() if len(row) > 10 else ""
 
-        # 如果有指令且还没有草稿，先生成回复草稿；不要求立刻发送。
+        # 有指令且还没草稿 → 先生成草稿
         final_reply = ai_reply
         if instruction and not ai_reply:
             try:
@@ -429,19 +654,25 @@ def main():
         if not final_reply or not to_email:
             continue
 
-        account = EMAIL_ACCOUNTS[0]  # 回复统一用第一个账号，可以改
+        # 用收件邮箱对应的发件账号回复
+        account = get_account_by_email(receiver) if receiver else EMAIL_ACCOUNTS[0]
         subject = "Re: Zdeer Collaboration"
-        print(f"  回复 <{to_email}>")
+        print(f"  回复 <{to_email}> via {account['email']}")
         ok = send_email(account, to_email, subject, final_reply)
 
         if ok:
             update_cell(sheets, REPLIES_SHEET, i, 7, "已回复")
             update_cell(sheets, REPLIES_SHEET, i, 10, "")  # 清空✅防止重复发
+            # 追加E列记录
+            append_to_history(sheets, i,
+                              f"{datetime.now().strftime('%Y-%m-%d')} 我回复：（已发送）")
             print(f"  ✅ 回复成功")
 
         wait = random.randint(15, 30)
         time.sleep(wait)
 
+    # ── 保存本次运行时间戳 ────────────────────────────────────────
+    save_last_run_time(sheets)
     print(f"\n🎉 运行完成 — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 
