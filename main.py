@@ -622,7 +622,7 @@ def main():
         replies_data = get_sheet_data(sheets, REPLIES_SHEET)
         time.sleep(1)
 
-    # ── 5. 处理「沟通管理」中标了 ✅ 的行 → 发回复邮件 ──────────
+    # ── 5. 处理「沟通管理」中的 🔄 / ✅ ────────────────────────
     print("\n💬 检查待发回复...")
     replies_data = get_sheet_data(sheets, REPLIES_SHEET)
 
@@ -638,27 +638,32 @@ def main():
         history     = row[4].strip() if len(row) > 4 else ""
         receiver    = row[10].strip() if len(row) > 10 else ""
 
-        # 有指令且还没草稿 → 先生成草稿
-        final_reply = ai_reply
-        if instruction and not ai_reply:
+        # J列填 🔄：只根据H列中文指令重新生成I列草稿，不发邮件。
+        if send_flag == "🔄":
+            if not instruction:
+                print(f"  ⚠️ 第{i}行标了🔄但H列没有指令，跳过")
+                continue
             try:
                 print(f"  根据指令重新生成回复：{instruction}")
-                final_reply = ai_regenerate_reply(instruction, history, stage, cards)
-                update_cell(sheets, REPLIES_SHEET, i, 9, final_reply)
+                new_reply = ai_regenerate_reply(instruction, history, stage, cards)
+                update_cell(sheets, REPLIES_SHEET, i, 9, new_reply)
+                update_cell(sheets, REPLIES_SHEET, i, 10, "")  # 清空🔄防止重复生成
+                print("  ✅ 草稿已更新到I列")
             except Exception as e:
                 print(f"  ⚠️ 重新生成失败：{e}")
+            continue
 
         if send_flag != "✅":
             continue
 
-        if not final_reply or not to_email:
+        if not ai_reply or not to_email:
             continue
 
         # 用收件邮箱对应的发件账号回复
         account = get_account_by_email(receiver) if receiver else EMAIL_ACCOUNTS[0]
         subject = "Re: Zdeer Collaboration"
         print(f"  回复 <{to_email}> via {account['email']}")
-        ok = send_email(account, to_email, subject, final_reply)
+        ok = send_email(account, to_email, subject, ai_reply)
 
         if ok:
             update_cell(sheets, REPLIES_SHEET, i, 7, "已回复")
