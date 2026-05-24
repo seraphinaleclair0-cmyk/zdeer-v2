@@ -44,8 +44,8 @@ from template import (
 
 # 待发名单列（A~H）
 OUTBOX_COLS = ["达人名字", "邮箱", "TikTok链接", "发件邮箱", "发送", "状态", "发送时间", "跟进次数"]
-# 沟通管理列（A~J）
-REPLIES_COLS = ["日期", "达人名字", "邮箱", "回复摘要", "过往沟通", "当前阶段", "状态", "你的指令", "AI生成回复", "发送"]
+# 沟通管理列（A~K）
+REPLIES_COLS = ["日期", "达人名字", "邮箱", "回复摘要", "过往沟通", "当前阶段", "状态", "你的指令", "AI生成回复", "发送", "收件邮箱"]
 
 # ── 邮件发送 ──────────────────────────────────────────────────────
 
@@ -218,6 +218,7 @@ def fetch_new_replies(gmail) -> list[dict]:
             if from_email and body:
                 all_replies.append({
                     "from_email": from_email,
+                    "to_email": account["email"],
                     "date": date_str,
                     "body": body,
                 })
@@ -380,6 +381,7 @@ def main():
             "",
             ai_result["suggested_reply"],
             "",
+            reply.get("to_email", ""),
         ]
         append_row(sheets, REPLIES_SHEET, new_row)
         recorded.add(reply["from_email"].lower())
