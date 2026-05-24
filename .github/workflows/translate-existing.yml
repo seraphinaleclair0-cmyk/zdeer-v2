@@ -1,4 +1,4 @@
-name: 重建历史沟通内容
+name: 重建未回复新邮件
 on:
   workflow_dispatch:
 jobs:
@@ -20,7 +20,7 @@ jobs:
             google-auth-httplib2 \
             google-api-python-client \
             google-generativeai
-      - name: 从 Gmail 原始邮件重建 D/E 列
+      - name: 抓取 5月21日至今未回复新邮件并重建沟通管理
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
