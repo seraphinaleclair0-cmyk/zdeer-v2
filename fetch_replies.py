@@ -153,45 +153,41 @@ def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
 - stage 必须写中文，只能从给定选项中选择。
 - suggested_reply 必须写自然、专业的美式英语。
 - suggested_reply 不要出现中文，不要中英混杂。
-- 不要编造预算、物流、合同、付款、库存等未提供的信息。
+- 不要编造预算、物流、合同、付款等未在指令或筹码库中出现的具体数字或承诺。
 
-谈判思路（写邮件前先想清楚这几点，再动笔）：
-1. 达人最在意什么？钱、曝光、还是合作体验？从她的回复里判断，针对性回应。
-2. 先共情，再给信息。不要上来就报价或列条件，先让她感觉被理解。
+筹码库使用规则（重要）：
+- 筹码库里的所有条件都是真实存在、可以直接用的，不需要用户在指令里重复提醒。
+- 写回复时，根据当前阶段主动把相关筹码自然地融入邮件，不要遗漏。
+- 例如：阶段二报价时，转化激励（带货达$5000额外奖励$300）必须主动写进去，不需要用户再提。
+
+谈判思路（写邮件前先想清楚，再动笔）：
+1. 达人最在意什么？从她的回复判断，针对性回应，不要泛泛而谈。
+2. 先共情，再给信息。不要上来就列条件，先让她感觉被理解。
 3. 用「我为你争取到了」而不是「我们提供」——前者有温度，后者像报价单。
-4. 把亮点按说服力排序：先说最打动人的（比如无审核、ad support），再说报价，最后用转化激励做收尾甜头。
-5. 结尾要推进行动，但不施压——用开放式问句邀请她表态，而不是催促。
-6. 如果对方报价高，不要直接拒绝，而是重新框定价值：我们给的不只是钱，还有流量放大和长期合作机会。
+4. 亮点按说服力排序：先说最打动人的，再说报价，最后用转化激励做收尾甜头。
+5. 结尾用开放式问句推进，不施压。
+6. 如果对方报价高，不直接拒绝，而是重新框定价值：不只是钱，还有流量放大和长期合作机会。
 
 suggested_reply 写作风格要求：
-- 像一个有经验的红人营销人写的，口语化但专业
-- 委婉礼貌，但有立场，不轻易让步
-- 不用模板化开头，例如"I hope this email finds you well"之类
-- 简洁，去掉一切废话和过度客套
-- 在邮件正文中自然地加入 1-2 个 emoji，友好但不过度，符合语境
-- 邮件落款统一用 "Best, Eloise"，不用其他签名格式
+- 口语化但专业，像真人写的，不像模板
+- 简洁，不啰嗦，每个句子都要有用，去掉所有废话和过度客套
+- 不用夸张的形容词，不浮夸，语气正常自然
+- 不用模板化开头，例如 "I hope this email finds you well" 之类
+- 在邮件正文中自然加入 1-2 个 emoji，符合语境，不堆砌
+- 落款统一用 "Best, Eloise"
 
-风格示例（模仿这个语气、节奏和结构，不要照抄内容）：
+风格示例（模仿语气和简洁度，不要照抄内容）：
 ---
 Hey Sylvia,
 
-Great to hear back from you!
+Talked to my team — we can do $500 for 1 video.
 
-I went back to my team and pushed for the budget, and we've managed to secure $500 for 1 video. Would you be open to this?
+I know it's lower than your rate, so here's what else is on the table: we put ad spend behind every video to boost reach, and if the content hits $5,000 in sales, there's an extra $500 bonus for you — no cap on that.
 
-I know this is a bit lower than what you were expecting, so I also added a bonus perk: for every $5,000 in sales (about 125 orders), we'll pay you an extra $500 — there's no limit to this bonus.
-
-Actually, this product gets really solid organic traffic — you can check out this viral video, which already has 330K likes!
-https://www.tiktok.com/@maximumboom/video/7460634333234302254
-
-The viral video from a few days ago:
+Creative is fully yours, no approval process. Here's a recent video that did well for context:
 https://www.tiktok.com/@mcamila0301/video/7640311080094403854
 
-Plus, for your videos, you only need to mention the core selling points; the rest is completely up to your creativity, and there's no need to send videos for approval — should make things a lot easier for you. 🙌
-
-I really feel that with your base traffic plus our ad support, these videos could perform really well. If you're interested, we can start with this as our first collab and explore more ways to work together down the line!
-
-Do you think this would work for you? I'd love to hear your thoughts — I truly believe in you and would be so excited to collaborate! 🎉
+Would this work for you? 🙌
 
 Best,
 Eloise
