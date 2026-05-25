@@ -41,6 +41,11 @@ from template import (
     get_outreach_subject,
 )
 
+MAX_OUTREACH_PER_RUN = int(os.environ.get("MAX_OUTREACH_PER_RUN", "40"))
+MAX_CONSECUTIVE_FAILURES_PER_ACCOUNT = int(
+    os.environ.get("MAX_CONSECUTIVE_FAILURES_PER_ACCOUNT", "3")
+)
+
 # ── 列定义 ────────────────────────────────────────────────────────
 
 # 待发名单列（A~H）
@@ -96,7 +101,7 @@ def get_account_by_email(email: str) -> dict:
     return EMAIL_ACCOUNTS[0]
 
 
-def send_email(account: dict, to_email: str, subject: str, body: str) -> bool:
+def send_email(account: dict, to_email: str, subject: str, body: str) -> tuple[bool, str]:
     try:
         msg = MIMEMultipart()
         msg["From"] = account["email"]
@@ -107,10 +112,11 @@ def send_email(account: dict, to_email: str, subject: str, body: str) -> bool:
             server.starttls()
             server.login(account["email"], account["password"])
             server.sendmail(account["email"], to_email, msg.as_string())
-        return True
+        return True, ""
     except Exception as e:
-        print(f"  ❌ 发送失败：{e}")
-        return False
+        error = str(e)
+        print(f"  ❌ 发送失败：{error}")
+        return False, error
 
 # ── Google Sheets 工具 ────────────────────────────────────────────
 
@@ -464,6 +470,7 @@ def main():
     # ── 1. 处理「待发名单」中标了 ✅ 的行 ────────────────────────
     print("\n📤 检查待发名单...")
     sent_count = 0
+    consecutive_failures = {account["email"]: 0 for account in EMAIL_ACCOUNTS}
 
     for i, row in enumerate(outbox_data[1:], start=2):
         if len(row) < 5:
@@ -477,21 +484,31 @@ def main():
         status       = row[5].strip() if len(row) > 5 else ""
 
         if send_flag == "✅" and status != "已发送":
+            if sent_count >= MAX_OUTREACH_PER_RUN:
+                print(f"  已达到本次开发邮件上限 {MAX_OUTREACH_PER_RUN}，剩余下次继续")
+                break
+
             account = get_account_by_email(sender_email) if sender_email else EMAIL_ACCOUNTS[sent_count % len(EMAIL_ACCOUNTS)]
+            if consecutive_failures.get(account["email"], 0) >= MAX_CONSECUTIVE_FAILURES_PER_ACCOUNT:
+                print(f"  ⚠️ {account['email']} 连续失败过多，本次暂停该账号，跳过第{i}行")
+                continue
+
             subject = get_outreach_subject(name)
             body    = get_outreach_body(name, tiktok_url)
 
             print(f"  发送给 {name} <{to_email}>")
-            ok = send_email(account, to_email, subject, body)
+            ok, error = send_email(account, to_email, subject, body)
 
             if ok:
                 update_cell(sheets, OUTBOX_SHEET, i, 6, "已发送")
                 update_cell(sheets, OUTBOX_SHEET, i, 7, datetime.now().strftime("%Y-%m-%d %H:%M"))
                 update_cell(sheets, OUTBOX_SHEET, i, 8, "0")
+                consecutive_failures[account["email"]] = 0
                 sent_count += 1
                 print(f"  ✅ 成功")
             else:
-                update_cell(sheets, OUTBOX_SHEET, i, 6, "发送失败")
+                consecutive_failures[account["email"]] = consecutive_failures.get(account["email"], 0) + 1
+                update_cell(sheets, OUTBOX_SHEET, i, 6, f"发送失败：{error[:80]}")
 
             if sent_count < len(outbox_data):
                 wait = random.randint(SEND_INTERVAL_MIN, SEND_INTERVAL_MAX)
@@ -536,7 +553,7 @@ def main():
             body    = get_followup_body(name, tiktok_url)
 
             print(f"  跟进 {name} <{to_email}>")
-            ok = send_email(account, to_email, subject, body)
+            ok, _ = send_email(account, to_email, subject, body)
 
             if ok:
                 update_cell(sheets, OUTBOX_SHEET, i, 8, str(followup + 1))
@@ -709,7 +726,7 @@ def main():
         account = get_account_by_email(receiver) if receiver else EMAIL_ACCOUNTS[0]
         subject = "Re: Zdeer Collaboration"
         print(f"  回复 <{to_email}> via {account['email']}")
-        ok = send_email(account, to_email, subject, ai_reply)
+        ok, _ = send_email(account, to_email, subject, ai_reply)
 
         if ok:
             update_cell(sheets, REPLIES_SHEET, i, 7, "已回复")
