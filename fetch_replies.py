@@ -406,34 +406,16 @@ def main():
     for sent in sent_emails:
         to_email = sent["to_email"].lower()
         print(f"  处理已发邮件 → {to_email}")
-        summary = ai_summarize_sent(sent["body"])
-        entry = f"{today} 我回复：{summary}"
 
         existing_row = find_in_replies(replies_data, to_email)
-        if existing_row:
-            append_to_history(sheets, existing_row, entry)
-            print(f"  ✅ 追加到E列")
-            replies_data = get_sheet_data(sheets, REPLIES_SHEET)
+        if not existing_row:
+            print(f"  跳过（达人未回复）：{to_email}")
             continue
 
-        # 两边都没有 → 新建一行
-        outbox_row_i, outbox_info = find_in_outbox(outbox_data, to_email)
-        name = outbox_info.get("name", "")
-        new_row = [
-            today,
-            name,
-            sent["to_email"],
-            f"{today} 我发邮：{summary}",
-            f"{today} 我发邮：{summary}",
-            "",
-            "待回复",
-            "",
-            "",
-            "",
-            sent.get("from_email", ""),
-        ]
-        append_row(sheets, REPLIES_SHEET, new_row)
-        print(f"  ✅ 新建行（主动发出）：{sent['to_email']}")
+        summary = ai_summarize_sent(sent["body"])
+        entry = f"{today} 我回复：{summary}"
+        append_to_history(sheets, existing_row, entry)
+        print(f"  ✅ 追加到E列")
         replies_data = get_sheet_data(sheets, REPLIES_SHEET)
         time.sleep(1)
 
