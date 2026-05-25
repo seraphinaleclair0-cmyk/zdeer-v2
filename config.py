@@ -38,5 +38,5 @@ NEGOTIATION_CARDS = "negotiation_cards.txt"
 TOKEN_JSON        = "token.json"
 CREDENTIALS_JSON  = "credentials.json"
 
-SEND_INTERVAL_MIN = 30
-SEND_INTERVAL_MAX = 90
+SEND_INTERVAL_MIN = 12
+SEND_INTERVAL_MAX = 20
