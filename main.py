@@ -199,15 +199,57 @@ def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel(GEMINI_MODEL)
 
-    prompt = f"""你是一个 TikTok 达人合作 BD 助手。
+    prompt = f"""你是一个有经验的 TikTok 红人营销 BD，正在代表品牌与达人沟通合作。
 以下是达人发来的回复邮件，请完成三件事。
 
 语言规则：
 - summary 必须写中文，方便团队内部阅读。
-- stage 必须写中文，并且只能从给定选项中选择。
-- suggested_reply 必须写自然、专业、简洁的美式英语，像美国品牌 BD 真人写的邮件。
-- suggested_reply 不要出现中文，不要中英混杂，不要直译中文表达。
+- stage 必须写中文，只能从给定选项中选择。
+- suggested_reply 必须写自然、专业的美式英语。
+- suggested_reply 不要出现中文，不要中英混杂。
 - 不要编造预算、物流、合同、付款、库存等未提供的信息。
+
+谈判思路（写邮件前先想清楚这几点，再动笔）：
+1. 达人最在意什么？钱、曝光、还是合作体验？从她的回复里判断，针对性回应。
+2. 先共情，再给信息。不要上来就报价或列条件，先让她感觉被理解。
+3. 用「我为你争取到了」而不是「我们提供」——前者有温度，后者像报价单。
+4. 把亮点按说服力排序：先说最打动人的（比如无审核、ad support），再说报价，最后用转化激励做收尾甜头。
+5. 结尾要推进行动，但不施压——用开放式问句邀请她表态，而不是催促。
+6. 如果对方报价高，不要直接拒绝，而是重新框定价值：我们给的不只是钱，还有流量放大和长期合作机会。
+
+suggested_reply 写作风格要求：
+- 像一个有经验的红人营销人写的，口语化但专业
+- 委婉礼貌，但有立场，不轻易让步
+- 不用模板化开头，例如"I hope this email finds you well"之类
+- 简洁，去掉一切废话和过度客套
+- 在邮件正文中自然地加入 1-2 个 emoji，友好但不过度，符合语境
+- 邮件落款统一用 "Best, Eloise"，不用其他签名格式
+
+风格示例（模仿这个语气、节奏和结构，不要照抄内容）：
+---
+Hey Sylvia,
+
+Great to hear back from you!
+
+I went back to my team and pushed for the budget, and we've managed to secure $500 for 1 video. Would you be open to this?
+
+I know this is a bit lower than what you were expecting, so I also added a bonus perk: for every $5,000 in sales (about 125 orders), we'll pay you an extra $500 — there's no limit to this bonus.
+
+Actually, this product gets really solid organic traffic — you can check out this viral video, which already has 330K likes!
+https://www.tiktok.com/@maximumboom/video/7460634333234302254
+
+The viral video from a few days ago:
+https://www.tiktok.com/@mcamila0301/video/7640311080094403854
+
+Plus, for your videos, you only need to mention the core selling points; the rest is completely up to your creativity, and there's no need to send videos for approval — should make things a lot easier for you. 🙌
+
+I really feel that with your base traffic plus our ad support, these videos could perform really well. If you're interested, we can start with this as our first collab and explore more ways to work together down the line!
+
+Do you think this would work for you? I'd love to hear your thoughts — I truly believe in you and would be so excited to collaborate! 🎉
+
+Best,
+Eloise
+---
 
 邮件内容：
 {reply_body}
@@ -217,7 +259,7 @@ def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
 
 请严格按以下 JSON 格式返回，不要加任何其他内容：
 {{
-  "summary": "用1-2句中文概括回复的核心内容，必须是中文",
+  "summary": "用1-2句中文概括回复的核心内容",
   "stage": "从以下选一个：初次感兴趣 / 价格谈判中 / 犹豫不决 / 已拒绝可挽回 / 已成交 / 其他",
   "suggested_reply": "根据阶段和筹码库，用美式英语写一封完整的建议回复邮件"
 }}
@@ -240,7 +282,7 @@ def ai_regenerate_reply(instruction: str, history: str, stage: str, cards: str) 
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel(GEMINI_MODEL)
 
-    prompt = f"""你是一个 TikTok 达人合作 BD 助手。
+    prompt = f"""你是一个有经验的 TikTok 红人营销 BD，正在代表品牌与达人沟通合作。
 
 当前谈判阶段：{stage}
 过往沟通记录（中文内部记录）：{history if history else "无"}
@@ -249,12 +291,18 @@ def ai_regenerate_reply(instruction: str, history: str, stage: str, cards: str) 
 可用筹码库：
 {cards}
 
-请根据以上信息，用自然、专业、简洁的美式英语写一封完整回复邮件。
+请根据以上信息，用自然、专业的美式英语写一封完整回复邮件。
 要求：
 - 只返回英文邮件正文，不要加任何说明。
 - 不要出现中文，不要中英混杂。
 - 不要直译中文指令，要写成美国达人能自然理解的表达。
 - 不要编造预算、物流、合同、付款、库存等未提供的信息。
+- 像一个有经验的红人营销人写的，口语化但专业。
+- 委婉礼貌，但有立场，不轻易让步。
+- 不用模板化开头，例如"I hope this email finds you well"之类。
+- 简洁，去掉一切废话和过度客套。
+- 在邮件正文中自然地加入 1-2 个 emoji，友好但不过度，符合语境。
+- 邮件落款统一用 "Best, Eloise"，不用其他签名格式。
 """
     response = model.generate_content(prompt)
     return response.text.strip()
