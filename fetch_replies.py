@@ -417,8 +417,9 @@ def main():
         summary_entry = f"{today} 达人回复：{ai_result['summary']}"
 
         if existing_row:
-            # 已有达人 → 更新 D/E/F/G/I/M/N 列，不动 H/J/K/L
+            # 已有达人 → 更新 A/D/E/F/G/I/M/N 列，不动 H/J/K/L
             print(f"  更新已有达人：{from_email}")
+            update_cell(sheets, REPLIES_SHEET, existing_row, 1, today)               # A 日期
             update_cell(sheets, REPLIES_SHEET, existing_row, 4, summary_entry)       # D 回复摘要
             append_to_history(sheets, existing_row, summary_entry)                    # E 过往沟通追加
             update_cell(sheets, REPLIES_SHEET, existing_row, 6, ai_result["stage"])  # F 当前阶段
