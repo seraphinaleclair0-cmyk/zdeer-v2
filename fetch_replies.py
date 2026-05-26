@@ -158,22 +158,28 @@ def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
 筹码库使用规则（重要）：
 - 筹码库里的所有条件都是真实存在、可以直接用的，不需要用户在指令里重复提醒。
 - 写回复时，根据当前阶段主动把相关筹码自然地融入邮件，不要遗漏。
-- 例如：阶段二报价时，转化激励（带货达$5000额外奖励$300）必须主动写进去，不需要用户再提。
+- 转化激励金额固定是：带货达 $5,000，额外奖励 $300，不得改成其他数字。
 
-谈判思路（写邮件前先想清楚，再动笔）：
+邮件结构必须严格按以下顺序，不得调换：
+1. "Hey [达人名字]," 开头，名字从邮件或过往沟通里提取，提取不到就用 "Hey there,"
+2. 先认可她的价值或对她的回复表示共情，1句话，不啰嗦
+3. 说 ad support 和创意自由——让她感觉合作轻松有保障
+4. 说报价金额（由指令提供）
+5. 最后说转化激励作为收尾甜头，问她这样是否可以
+6. 结尾用开放式问句，不提合同、样品、下一步等任何后续动作
+
+谈判思路：
 1. 达人最在意什么？从她的回复判断，针对性回应，不要泛泛而谈。
 2. 先共情，再给信息。不要上来就列条件，先让她感觉被理解。
 3. 用「我为你争取到了」而不是「我们提供」——前者有温度，后者像报价单。
-4. 亮点按说服力排序：先说最打动人的，再说报价，最后用转化激励做收尾甜头。
-5. 结尾用开放式问句推进，不施压。
-6. 如果对方报价高，不直接拒绝，而是重新框定价值：不只是钱，还有流量放大和长期合作机会。
+4. 结尾用开放式问句推进，不施压。
+5. 如果对方报价高，不直接拒绝，而是重新框定价值：不只是钱，还有流量放大和长期合作机会。
 
 suggested_reply 写作风格要求：
 - 口语化但专业，像真人写的，不像模板
 - 简洁，不啰嗦，每个句子都要有用，去掉所有废话和过度客套
 - 不用夸张的形容词，不浮夸，语气正常自然
-- 邮件开头固定用 "Hey [达人名字],"，名字从过往沟通或邮件内容里提取，提取不到就用 "Hey there,"
-- 不用任何其他开头方式
+- 开头固定用 "Hey [名字],"，不用任何其他开头方式
 - 在邮件正文中自然加入 1-2 个 emoji，符合语境，不堆砌
 - 落款统一用 "Best, Eloise"
 
@@ -183,7 +189,7 @@ Hey Sylvia,
 
 Talked to my team — we can do $500 for 1 video.
 
-I know it's lower than your rate, so here's what else is on the table: we put ad spend behind every video to boost reach, and if the content hits $5,000 in sales, there's an extra $500 bonus for you — no cap on that.
+I know it's lower than your rate, so here's what else is on the table: we put ad spend behind every video to boost reach, and if the content hits $5,000 in sales, there's an extra $300 bonus for you — no cap on that.
 
 Creative is fully yours, no approval process. Here's a recent video that did well for context:
 https://www.tiktok.com/@mcamila0301/video/7640311080094403854
