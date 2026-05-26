@@ -449,9 +449,13 @@ def main():
         if existing_row and len(replies_data[existing_row - 1]) > 4:
             history = replies_data[existing_row - 1][4].strip()
 
-        # Gemini 处理
+        # 把当前这封新邮件也拼进 history，让 AI 看到完整上下文
+        current_email_entry = f"{today} 达人来信：{reply['body'][:500]}"
+        full_history = f"{history} | {current_email_entry}" if history else current_email_entry
+
+        # AI 处理
         try:
-            ai_result = ai_process_reply(reply["body"], history, cards)
+            ai_result = ai_process_reply(reply["body"], full_history, cards)
         except Exception as e:
             print(f"  ⚠️ AI失败：{e}")
             ai_result = {"summary": "AI处理失败", "stage": "其他", "suggested_reply": ""}
