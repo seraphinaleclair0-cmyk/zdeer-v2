@@ -175,6 +175,13 @@ def extract_email(value: str) -> str:
     return match.group(0).lower() if match else ""
 
 
+def extract_emails(value: str) -> set[str]:
+    return {
+        match.lower()
+        for match in re.findall(r"[\w.+-]+@[\w.+-]+\.\w+", value or "")
+    }
+
+
 def parse_email_date(date_header: str, fallback: str) -> str:
     try:
         return parsedate_to_datetime(date_header).strftime("%Y-%m-%d")
@@ -325,6 +332,7 @@ def build_thread_history(
     gmail,
     thread_id: str,
     own_emails: set[str],
+    target_email: str,
     current_message_id: str,
     current_summary: str,
     fallback_date: str,
@@ -344,6 +352,7 @@ def build_thread_history(
 
     entries = []
     seen_message_ids = set()
+    target_email = target_email.lower()
     thread_msgs = sorted(
         thread.get("messages", []),
         key=lambda item: int(item.get("internalDate", "0")),
@@ -362,7 +371,17 @@ def build_thread_history(
             continue
 
         from_email = extract_email(headers.get("From", ""))
-        speaker = "我方" if from_email in own_emails else "达人"
+        if from_email in own_emails:
+            recipients = set()
+            for header_name in ("To", "Cc", "Bcc", "Delivered-To"):
+                recipients.update(extract_emails(headers.get(header_name, "")))
+            if target_email not in recipients and message_id != current_message_id:
+                continue
+            speaker = "我方"
+        elif from_email == target_email:
+            speaker = "达人"
+        else:
+            continue
         date_str = parse_email_date(headers.get("Date", ""), fallback_date)
         if message_id and current_message_id and message_id == current_message_id:
             summary = current_summary
@@ -392,10 +411,57 @@ def list_all_messages(gmail, query: str) -> list:
     return messages
 
 
+def latest_inbound_by_sender(gmail, messages: list, own_emails: set[str]) -> tuple[list, dict]:
+    counts = {"skipped_own": 0, "skipped_empty": 0}
+    latest_by_email = {}
+
+    for msg_ref in messages:
+        msg = gmail.users().messages().get(
+            userId="me",
+            id=msg_ref["id"],
+            format="full",
+        ).execute()
+        label_ids = set(msg.get("labelIds", []))
+        if "SENT" in label_ids or "DRAFT" in label_ids:
+            continue
+
+        headers = parse_headers(msg)
+        from_email = extract_email(headers.get("From", ""))
+        if not from_email or from_email in own_emails:
+            counts["skipped_own"] += 1
+            continue
+
+        body = extract_body(msg)
+        if not body:
+            counts["skipped_empty"] += 1
+            print(f"  ⏭️ 邮件正文为空，跳过：{from_email}")
+            continue
+
+        internal_date = int(msg.get("internalDate", "0"))
+        current = latest_by_email.get(from_email)
+        if not current or internal_date > current["internal_date"]:
+            latest_by_email[from_email] = {
+                "msg": msg,
+                "headers": headers,
+                "from_email": from_email,
+                "body": body,
+                "internal_date": internal_date,
+            }
+
+    return (
+        sorted(
+            latest_by_email.values(),
+            key=lambda item: item["internal_date"],
+            reverse=True,
+        ),
+        counts,
+    )
+
+
 def main():
     print(f"\n🔁 开始补全历史回复 — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"  范围：{START_LABEL} 至今")
-    print("  规则：沟通管理已有邮箱就跳过，只新增缺失达人")
+    print("  规则：沟通管理已有邮箱则修复D/E，没有则新增")
 
     creds = get_creds()
     gmail = build("gmail", "v1", credentials=creds)
@@ -411,7 +477,7 @@ def main():
     seen_emails = set()
 
     added = 0
-    skipped_existing = 0
+    repaired_existing = 0
     skipped_own = 0
     skipped_empty = 0
 
@@ -427,41 +493,22 @@ def main():
 
         print(f"  找到 {len(messages)} 封")
 
-        for msg_ref in messages:
-            msg = gmail.users().messages().get(
-                userId="me",
-                id=msg_ref["id"],
-                format="full",
-            ).execute()
-            label_ids = set(msg.get("labelIds", []))
-            if "SENT" in label_ids or "DRAFT" in label_ids:
-                continue
+        latest_records, counts = latest_inbound_by_sender(gmail, messages, own_emails)
+        skipped_own += counts["skipped_own"]
+        skipped_empty += counts["skipped_empty"]
+        print(f"  按达人邮箱去重后 {len(latest_records)} 封最新回复")
 
-            headers = parse_headers(msg)
-            from_email = extract_email(headers.get("From", ""))
-            if not from_email or from_email in own_emails:
-                skipped_own += 1
-                continue
-
+        for record in latest_records:
+            msg = record["msg"]
+            headers = record["headers"]
+            from_email = record["from_email"]
+            body = record["body"]
             if from_email in seen_emails:
                 print(f"  ⏭️ 本次已处理过，跳过：{from_email}")
                 continue
 
             replies_data = get_sheet_data(sheets, REPLIES_SHEET)
             existing_row = find_in_replies(replies_data, from_email)
-            if existing_row:
-                skipped_existing += 1
-                seen_emails.add(from_email)
-                print(f"  ⏭️ 沟通管理已有记录，跳过：{from_email}")
-                continue
-
-            body = extract_body(msg)
-            if not body:
-                skipped_empty += 1
-                print(f"  ⏭️ 邮件正文为空，跳过：{from_email}")
-                continue
-
-            print(f"  ✅ 新建：{from_email}")
             date_str = parse_email_date(headers.get("Date", ""), today)
 
             try:
@@ -471,20 +518,34 @@ def main():
                 ai_result = {"summary": "AI处理失败", "stage": "其他", "suggested_reply": ""}
 
             summary_entry = f"{date_str} 达人：{ai_result['summary']}"
+            thread_history = build_thread_history(
+                gmail,
+                msg.get("threadId", ""),
+                own_emails,
+                from_email,
+                headers.get("Message-ID", ""),
+                ai_result["summary"],
+                date_str,
+            )
+
+            if existing_row:
+                repaired_existing += 1
+                seen_emails.add(from_email)
+                print(f"  🔧 修复已有记录 D/E：{from_email}")
+                update_cell(sheets, REPLIES_SHEET, existing_row, 1, date_str)
+                update_cell(sheets, REPLIES_SHEET, existing_row, 4, summary_entry)
+                update_cell(sheets, REPLIES_SHEET, existing_row, 5, thread_history)
+                update_cell(sheets, REPLIES_SHEET, existing_row, 13, headers.get("Message-ID", ""))
+                update_cell(sheets, REPLIES_SHEET, existing_row, 14, headers.get("Subject", ""))
+                time.sleep(2)
+                continue
+
+            print(f"  ✅ 新建：{from_email}")
             outbox_row_i, outbox_info = find_in_outbox(outbox_data, from_email)
             name = outbox_info.get("name", "")
 
             if outbox_row_i:
                 update_cell(sheets, OUTBOX_SHEET, outbox_row_i, 6, "已回复")
-
-            thread_history = build_thread_history(
-                gmail,
-                msg.get("threadId", ""),
-                own_emails,
-                headers.get("Message-ID", ""),
-                ai_result["summary"],
-                date_str,
-            )
 
             new_row = [
                 date_str,
@@ -511,7 +572,7 @@ def main():
     print(f"""
 🎉 补全完成 — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
   新增：{added} 行
-  沟通管理已有跳过：{skipped_existing} 封/人
+  修复已有：{repaired_existing} 行
   自己邮箱或无发件人跳过：{skipped_own} 封
   正文为空跳过：{skipped_empty} 封
 """)

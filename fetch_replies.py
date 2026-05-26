@@ -372,6 +372,13 @@ def _extract_email(value: str) -> str:
     return match.group(0).lower() if match else ""
 
 
+def _extract_emails(value: str) -> set[str]:
+    return {
+        match.lower()
+        for match in re.findall(r"[\w.+-]+@[\w.+-]+\.\w+", value or "")
+    }
+
+
 def _parse_email_date(date_header: str, fallback: str) -> str:
     try:
         return parsedate_to_datetime(date_header).strftime("%Y-%m-%d")
@@ -383,6 +390,7 @@ def build_thread_history(
     gmail,
     thread_id: str,
     own_emails: list[str],
+    target_email: str,
     current_message_id: str,
     current_summary: str,
     fallback_date: str,
@@ -403,6 +411,7 @@ def build_thread_history(
     entries = []
     seen_message_ids = set()
     own_email_set = {email.lower() for email in own_emails}
+    target_email = target_email.lower()
     thread_msgs = sorted(
         thread.get("messages", []),
         key=lambda item: int(item.get("internalDate", "0")),
@@ -421,7 +430,17 @@ def build_thread_history(
             continue
 
         from_email = _extract_email(headers.get("From", ""))
-        speaker = "我方" if from_email in own_email_set else "达人"
+        if from_email in own_email_set:
+            recipients = set()
+            for header_name in ("To", "Cc", "Bcc", "Delivered-To"):
+                recipients.update(_extract_emails(headers.get(header_name, "")))
+            if target_email not in recipients and message_id != current_message_id:
+                continue
+            speaker = "我方"
+        elif from_email == target_email:
+            speaker = "达人"
+        else:
+            continue
         date_str = _parse_email_date(headers.get("Date", ""), fallback_date)
         if message_id and current_message_id and message_id == current_message_id:
             summary = current_summary
@@ -498,11 +517,18 @@ def fetch_new_replies(gmail, last_run: datetime) -> list[dict]:
                     "date": headers.get("Date", ""),
                     "body": body,
                     "thread_id": msg.get("threadId", ""),
+                    "internal_date": int(msg.get("internalDate", "0")),
                     "message_id": headers.get("Message-ID", ""),
                     "subject": headers.get("Subject", ""),
                 })
 
-    return all_replies
+    latest_by_email = {}
+    for reply in all_replies:
+        email = reply["from_email"].lower()
+        if email not in latest_by_email or reply["internal_date"] > latest_by_email[email]["internal_date"]:
+            latest_by_email[email] = reply
+
+    return list(latest_by_email.values())
 
 
 def fetch_sent_emails(gmail, last_run: datetime) -> list[dict]:
@@ -589,6 +615,7 @@ def main():
 
     for reply in new_replies:
         from_email = reply["from_email"].lower()
+        reply_date = _parse_email_date(reply.get("date", ""), today)
         existing_row = find_in_replies(replies_data, from_email)
 
         # 获取过往沟通
@@ -597,7 +624,7 @@ def main():
             history = replies_data[existing_row - 1][4].strip()
 
         # 把当前这封新邮件也拼进 history，让 AI 看到完整上下文
-        current_email_entry = f"{today} 达人来信：{reply['body'][:500]}"
+        current_email_entry = f"{reply_date} 达人来信：{reply['body'][:500]}"
         full_history = f"{history} | {current_email_entry}" if history else current_email_entry
 
         # AI 处理
@@ -607,12 +634,12 @@ def main():
             print(f"  ⚠️ AI失败：{e}")
             ai_result = {"summary": "AI处理失败", "stage": "其他", "suggested_reply": ""}
 
-        summary_entry = f"{today} 达人：{ai_result['summary']}"
+        summary_entry = f"{reply_date} 达人：{ai_result['summary']}"
 
         if existing_row:
             # 已有达人 → 更新 A/D/E/F/G/I/M/N 列，不动 H/J/K/L
             print(f"  更新已有达人：{from_email}")
-            update_cell(sheets, REPLIES_SHEET, existing_row, 1, today)               # A 日期
+            update_cell(sheets, REPLIES_SHEET, existing_row, 1, reply_date)         # A 日期
             update_cell(sheets, REPLIES_SHEET, existing_row, 4, summary_entry)       # D 回复摘要
             append_to_history(sheets, existing_row, summary_entry)                    # E 过往沟通追加
             update_cell(sheets, REPLIES_SHEET, existing_row, 6, ai_result["stage"])  # F 当前阶段
@@ -635,13 +662,14 @@ def main():
                 gmail,
                 reply.get("thread_id", ""),
                 [acc["email"] for acc in EMAIL_ACCOUNTS],
+                from_email,
                 reply.get("message_id", ""),
                 ai_result["summary"],
-                _parse_email_date(reply.get("date", ""), today),
+                reply_date,
             )
 
             new_row = [
-                today,                           # A 日期
+                reply_date,                      # A 日期
                 name,                            # B 达人名字
                 reply["from_email"],              # C 邮箱
                 summary_entry,                   # D 回复摘要
