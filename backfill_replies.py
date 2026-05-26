@@ -252,6 +252,79 @@ Eloise
         return {"summary": "AI解析失败，请手动查看", "stage": "其他", "suggested_reply": ""}
 
 
+def ai_summarize_history_message(body: str) -> str:
+    time.sleep(2)
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    prompt = f"""请用1句中文简洁总结以下邮件的核心内容，供内部沟通历史记录使用。
+格式要求：直接写重点，不加任何前缀，不超过1句话。
+不要写「达人：」「我方：」等角色前缀。
+
+邮件内容：
+{body[:1000]}
+"""
+    try:
+        message = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text.strip()
+    except Exception:
+        return "（摘要生成失败）"
+
+
+def build_thread_history(
+    gmail,
+    thread_id: str,
+    own_emails: set[str],
+    current_message_id: str,
+    current_summary: str,
+    fallback_date: str,
+) -> str:
+    if not thread_id:
+        return f"{fallback_date} 达人：{current_summary}"
+
+    try:
+        thread = gmail.users().threads().get(
+            userId="me",
+            id=thread_id,
+            format="full",
+        ).execute()
+    except Exception as e:
+        print(f"  ⚠️ 读取线程历史失败，只保留当前摘要：{e}")
+        return f"{fallback_date} 达人：{current_summary}"
+
+    entries = []
+    seen_message_ids = set()
+    thread_msgs = sorted(
+        thread.get("messages", []),
+        key=lambda item: int(item.get("internalDate", "0")),
+    )
+
+    for thread_msg in thread_msgs:
+        headers = parse_headers(thread_msg)
+        message_id = headers.get("Message-ID", "")
+        if message_id and message_id in seen_message_ids:
+            continue
+        if message_id:
+            seen_message_ids.add(message_id)
+
+        body = extract_body(thread_msg)
+        if not body:
+            continue
+
+        from_email = extract_email(headers.get("From", ""))
+        speaker = "我方" if from_email in own_emails else "达人"
+        date_str = parse_email_date(headers.get("Date", ""), fallback_date)
+        if message_id and current_message_id and message_id == current_message_id:
+            summary = current_summary
+        else:
+            summary = ai_summarize_history_message(body)
+        entries.append(f"{date_str} {speaker}：{summary}")
+
+    return " | ".join(entries) if entries else f"{fallback_date} 达人：{current_summary}"
+
+
 def list_all_messages(gmail, query: str) -> list:
     messages = []
     page_token = None
@@ -339,26 +412,36 @@ def main():
                 continue
 
             print(f"  ✅ 新建：{from_email}")
+            date_str = parse_email_date(headers.get("Date", ""), today)
+
             try:
                 ai_result = ai_process_reply(body, "", cards)
             except Exception as e:
                 print(f"  ⚠️ AI失败：{e}")
                 ai_result = {"summary": "AI处理失败", "stage": "其他", "suggested_reply": ""}
 
-            summary_entry = f"{today} 达人：{ai_result['summary']}"
+            summary_entry = f"{date_str} 达人：{ai_result['summary']}"
             outbox_row_i, outbox_info = find_in_outbox(outbox_data, from_email)
             name = outbox_info.get("name", "")
 
             if outbox_row_i:
                 update_cell(sheets, OUTBOX_SHEET, outbox_row_i, 6, "已回复")
 
-            date_str = parse_email_date(headers.get("Date", ""), today)
+            thread_history = build_thread_history(
+                gmail,
+                msg.get("threadId", ""),
+                own_emails,
+                headers.get("Message-ID", ""),
+                ai_result["summary"],
+                date_str,
+            )
+
             new_row = [
                 date_str,
                 name,
                 from_email,
                 summary_entry,
-                summary_entry,
+                thread_history,
                 ai_result["stage"],
                 "待回复",
                 "",

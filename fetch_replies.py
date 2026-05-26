@@ -17,6 +17,7 @@ import os
 import re
 import time
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 
 import anthropic
 import google.generativeai as genai
@@ -273,6 +274,27 @@ def ai_summarize_sent(body: str) -> str:
     except Exception:
         return "（摘要生成失败）"
 
+
+def ai_summarize_history_message(body: str) -> str:
+    time.sleep(2)
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    prompt = f"""请用1句中文简洁总结以下邮件的核心内容，供内部沟通历史记录使用。
+格式要求：直接写重点，不加任何前缀，不超过1句话。
+不要写「达人：」「我方：」等角色前缀。
+
+邮件内容：
+{body[:1000]}
+"""
+    try:
+        message = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text.strip()
+    except Exception:
+        return "（摘要生成失败）"
+
 # ── Gmail 工具 ────────────────────────────────────────────────────
 
 def _extract_body(msg: dict) -> str:
@@ -288,6 +310,78 @@ def _extract_body(msg: dict) -> str:
         data = payload["body"].get("data", "")
         body = base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
     return body[:1500].strip()
+
+
+def _headers(msg: dict) -> dict:
+    return {
+        h["name"]: h["value"]
+        for h in msg.get("payload", {}).get("headers", [])
+    }
+
+
+def _extract_email(value: str) -> str:
+    match = re.search(r"[\w.+-]+@[\w.+-]+\.\w+", value or "")
+    return match.group(0).lower() if match else ""
+
+
+def _parse_email_date(date_header: str, fallback: str) -> str:
+    try:
+        return parsedate_to_datetime(date_header).strftime("%Y-%m-%d")
+    except Exception:
+        return fallback
+
+
+def build_thread_history(
+    gmail,
+    thread_id: str,
+    own_emails: list[str],
+    current_message_id: str,
+    current_summary: str,
+    fallback_date: str,
+) -> str:
+    if not thread_id:
+        return f"{fallback_date} 达人：{current_summary}"
+
+    try:
+        thread = gmail.users().threads().get(
+            userId="me",
+            id=thread_id,
+            format="full",
+        ).execute()
+    except Exception as e:
+        print(f"  ⚠️ 读取线程历史失败，只保留当前摘要：{e}")
+        return f"{fallback_date} 达人：{current_summary}"
+
+    entries = []
+    seen_message_ids = set()
+    own_email_set = {email.lower() for email in own_emails}
+    thread_msgs = sorted(
+        thread.get("messages", []),
+        key=lambda item: int(item.get("internalDate", "0")),
+    )
+
+    for thread_msg in thread_msgs:
+        headers = _headers(thread_msg)
+        message_id = headers.get("Message-ID", "")
+        if message_id and message_id in seen_message_ids:
+            continue
+        if message_id:
+            seen_message_ids.add(message_id)
+
+        body = _extract_body(thread_msg)
+        if not body:
+            continue
+
+        from_email = _extract_email(headers.get("From", ""))
+        speaker = "我方" if from_email in own_email_set else "达人"
+        date_str = _parse_email_date(headers.get("Date", ""), fallback_date)
+        if message_id and current_message_id and message_id == current_message_id:
+            summary = current_summary
+        else:
+            summary = ai_summarize_history_message(body)
+        entries.append(f"{date_str} {speaker}：{summary}")
+
+    return " | ".join(entries) if entries else f"{fallback_date} 达人：{current_summary}"
 
 
 def fetch_new_replies(gmail, last_run: datetime) -> list[dict]:
@@ -355,6 +449,7 @@ def fetch_new_replies(gmail, last_run: datetime) -> list[dict]:
                     "to_email": account["email"],
                     "date": headers.get("Date", ""),
                     "body": body,
+                    "thread_id": msg.get("threadId", ""),
                     "message_id": headers.get("Message-ID", ""),
                     "subject": headers.get("Subject", ""),
                 })
@@ -487,12 +582,21 @@ def main():
                 print(f"  待开发名单找到 {name}，改状态为已回复")
                 update_cell(sheets, OUTBOX_SHEET, outbox_row_i, 6, "已回复")
 
+            thread_history = build_thread_history(
+                gmail,
+                reply.get("thread_id", ""),
+                [acc["email"] for acc in EMAIL_ACCOUNTS],
+                reply.get("message_id", ""),
+                ai_result["summary"],
+                _parse_email_date(reply.get("date", ""), today),
+            )
+
             new_row = [
                 today,                           # A 日期
                 name,                            # B 达人名字
                 reply["from_email"],              # C 邮箱
                 summary_entry,                   # D 回复摘要
-                summary_entry,                   # E 过往沟通
+                thread_history,                  # E 过往沟通
                 ai_result["stage"],               # F 当前阶段
                 "待回复",                          # G 状态
                 "",                               # H 你的指令
