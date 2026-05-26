@@ -3,23 +3,16 @@ regenerate.py — 只处理「沟通管理」中打了 🔄 的行
 重新根据 H列指令生成 I列草稿，不发任何邮件，不碰待发名单
 """
 
-import time
 from datetime import datetime
 
-import google.generativeai as genai
 from googleapiclient.discovery import build
 
 from config import (
-    EMAIL_ACCOUNTS,
-    GEMINI_API_KEY,
-    GEMINI_MODEL,
-    NEGOTIATION_CARDS,
     REPLIES_SHEET,
-    SHEET_ID,
 )
+from fetch_replies import ai_process_reply
 from google_auth import get_creds
 from main import (
-    ai_regenerate_reply,
     get_sheet_data,
     load_negotiation_cards,
     update_cell,
@@ -40,10 +33,10 @@ def main():
         if len(row) < 10:
             continue
 
-        stage       = row[5].strip() if len(row) > 5 else ""
-        instruction = row[7].strip() if len(row) > 7 else ""
-        send_flag   = row[9].strip() if len(row) > 9 else ""
-        history     = row[4].strip() if len(row) > 4 else ""
+        latest_summary = row[3].strip() if len(row) > 3 else ""
+        history        = row[4].strip() if len(row) > 4 else ""
+        instruction    = row[7].strip() if len(row) > 7 else ""
+        send_flag      = row[9].strip() if len(row) > 9 else ""
 
         if send_flag != "🔄":
             continue
@@ -55,7 +48,14 @@ def main():
 
         try:
             print(f"  🔄 行{i} 重新生成中：{instruction[:30]}...")
-            new_reply = ai_regenerate_reply(instruction, history, stage, cards)
+            ai_result = ai_process_reply(
+                latest_summary or history,
+                latest_summary,
+                history,
+                instruction,
+                cards,
+            )
+            new_reply = ai_result.get("suggested_reply", "")
             update_cell(sheets, REPLIES_SHEET, i, 9, new_reply)
             update_cell(sheets, REPLIES_SHEET, i, 10, "")  # 清空🔄
             regenerated += 1
