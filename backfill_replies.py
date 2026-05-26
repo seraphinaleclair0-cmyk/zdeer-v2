@@ -322,7 +322,7 @@ def build_thread_history(
             summary = ai_summarize_history_message(body)
         entries.append(f"{date_str} {speaker}：{summary}")
 
-    return " | ".join(entries) if entries else f"{fallback_date} 达人：{current_summary}"
+    return "\n".join(entries) if entries else f"{fallback_date} 达人：{current_summary}"
 
 
 def list_all_messages(gmail, query: str) -> list:

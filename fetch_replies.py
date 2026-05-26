@@ -123,7 +123,7 @@ def ensure_headers(sheets, sheet_name: str, headers: list):
 
 
 def append_to_history(sheets, row_index: int, new_entry: str):
-    """往沟通管理E列追加一条记录，用 | 分隔"""
+    """往沟通管理E列追加一条记录，用换行分隔，仍保留在同一个单元格"""
     result = sheets.spreadsheets().values().get(
         spreadsheetId=SHEET_ID,
         range=f"{REPLIES_SHEET}!E{row_index}",
@@ -132,7 +132,7 @@ def append_to_history(sheets, row_index: int, new_entry: str):
     values = result.get("values", [])
     if values and values[0]:
         existing = values[0][0].strip()
-    updated = f"{existing} | {new_entry}" if existing else new_entry
+    updated = f"{existing}\n{new_entry}" if existing else new_entry
     update_cell(sheets, REPLIES_SHEET, row_index, 5, updated)
 
 # ── Gemini ────────────────────────────────────────────────────────
@@ -381,7 +381,7 @@ def build_thread_history(
             summary = ai_summarize_history_message(body)
         entries.append(f"{date_str} {speaker}：{summary}")
 
-    return " | ".join(entries) if entries else f"{fallback_date} 达人：{current_summary}"
+    return "\n".join(entries) if entries else f"{fallback_date} 达人：{current_summary}"
 
 
 def fetch_new_replies(gmail, last_run: datetime) -> list[dict]:
