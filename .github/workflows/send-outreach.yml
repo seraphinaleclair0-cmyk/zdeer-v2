@@ -1,8 +1,9 @@
-name: 定时发开发信和跟进（每天22:00）
+name: 定时发开发信和跟进（夜间批次）
 on:
   schedule:
-    # 每天北京时间 22:00（UTC 14:00）
-    - cron: "0 14 * * *"
+    # 每天北京时间 00:00 / 02:00 / 04:00 / 06:00 / 08:00
+    # 对应 UTC 16:00 / 18:00 / 20:00 / 22:00 / 00:00
+    - cron: "0 0,16,18,20,22 * * *"
   workflow_dispatch:
 jobs:
   send:
@@ -31,6 +32,5 @@ jobs:
           GMAIL_PASS_2:      ${{ secrets.GMAIL_PASS_2 }}
           GMAIL_PASS_3:      ${{ secrets.GMAIL_PASS_3 }}
           GMAIL_PASS_4:      ${{ secrets.GMAIL_PASS_4 }}
-          MAX_OUTREACH_PER_RUN: "40"
           MAX_CONSECUTIVE_FAILURES_PER_ACCOUNT: "3"
         run: python send_outreach.py

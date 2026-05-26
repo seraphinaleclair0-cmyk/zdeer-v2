@@ -35,7 +35,7 @@ from template import (
     get_outreach_subject,
 )
 
-MAX_OUTREACH_PER_RUN = int(os.environ.get("MAX_OUTREACH_PER_RUN", "40"))
+MAX_OUTREACH_PER_RUN = int(os.environ.get("MAX_OUTREACH_PER_RUN", "0"))
 MAX_CONSECUTIVE_FAILURES_PER_ACCOUNT = int(
     os.environ.get("MAX_CONSECUTIVE_FAILURES_PER_ACCOUNT", "3")
 )
@@ -131,7 +131,7 @@ def main():
         if send_flag != "✅" or status == "已发送":
             continue
 
-        if sent_count >= MAX_OUTREACH_PER_RUN:
+        if MAX_OUTREACH_PER_RUN > 0 and sent_count >= MAX_OUTREACH_PER_RUN:
             print(f"  已达到本次开发邮件上限 {MAX_OUTREACH_PER_RUN}，剩余下次继续")
             break
 
