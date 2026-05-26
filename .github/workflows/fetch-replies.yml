@@ -1,8 +1,8 @@
 name: 收邮件更新表格
 on:
   schedule:
-    # 北京时间 8:00 / 12:00 / 17:00
-    - cron: "0 0,4,9 * * *"
+    # 每天北京时间 08:00（UTC 00:00）
+    - cron: "0 0 * * *"
   workflow_dispatch:
 jobs:
   fetch:

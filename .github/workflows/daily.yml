@@ -1,9 +1,6 @@
 name: Zdeer 每日自动运行
 on:
-  schedule:
-    # 每天 3 次：北京时间 08:00 / 12:00 / 17:00
-    - cron: "0 0,4,9 * * *"
-  workflow_dispatch:  # 允许手动触发测试
+  workflow_dispatch:  # 只允许手动触发测试，定时任务由 send-outreach/fetch-replies 分开执行
 jobs:
   run:
     runs-on: ubuntu-latest

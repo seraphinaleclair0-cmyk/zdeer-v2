@@ -200,7 +200,8 @@ def ai_summarize_sent(body: str) -> str:
 """
     try:
         return model.generate_content(prompt).text.strip()
-    except Exception:
+    except Exception as e:
+        print(f"  ⚠️ 已发邮件摘要生成失败：{e}")
         return "（摘要生成失败）"
 
 
@@ -285,7 +286,8 @@ Eloise
     text = re.sub(r"```json|```", "", text).strip()
     try:
         return json.loads(text)
-    except Exception:
+    except Exception as e:
+        print(f"  ⚠️ AI JSON解析失败：{e}；原始返回：{text[:300]}")
         return {"summary": "AI解析失败，请手动查看", "stage": "其他", "suggested_reply": ""}
 
 
@@ -332,9 +334,10 @@ def fetch_new_replies(gmail, last_run: datetime) -> list[dict]:
     """抓取上次运行时间之后收到的新邮件"""
     since = last_run.strftime("%Y/%m/%d")
     all_replies = []
+    own_emails = [acc["email"].lower() for acc in EMAIL_ACCOUNTS]
 
     for account in EMAIL_ACCOUNTS:
-        query = f"to:{account['email']} after:{since}"
+        query = f"in:inbox to:{account['email']} after:{since}"
         try:
             result = gmail.users().messages().list(
                 userId="me", q=query, maxResults=50
@@ -348,14 +351,16 @@ def fetch_new_replies(gmail, last_run: datetime) -> list[dict]:
             msg = gmail.users().messages().get(
                 userId="me", id=msg_ref["id"], format="full"
             ).execute()
+            label_ids = set(msg.get("labelIds", []))
+            if "INBOX" not in label_ids or "SENT" in label_ids or "DRAFT" in label_ids:
+                print(f"  ⏭️ 跳过非收件箱邮件：{msg_ref['id']}")
+                continue
 
             headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
             from_match = re.search(r"[\w.+-]+@[\w.+-]+\.\w+", headers.get("From", ""))
             from_email = from_match.group(0) if from_match else ""
             date_str = headers.get("Date", "")
 
-            # 过滤掉自己发给自己的
-            own_emails = [acc["email"].lower() for acc in EMAIL_ACCOUNTS]
             if from_email.lower() in own_emails:
                 continue
 
@@ -678,39 +683,19 @@ def main():
     for sent in sent_emails:
         to_email = sent["to_email"].lower()
 
+        # 查沟通管理
+        existing_row = find_in_replies(replies_data, to_email)
+        if not existing_row:
+            print(f"  跳过（沟通管理无达人回复记录）：{to_email}")
+            time.sleep(1)
+            continue
+
         # 生成中文摘要
         print(f"  处理已发邮件 → {to_email}")
         summary = ai_summarize_sent(sent["body"])
         entry = f"{today} 我回复：{summary}"
-
-        # 查沟通管理
-        existing_row = find_in_replies(replies_data, to_email)
-        if existing_row:
-            append_to_history(sheets, existing_row, entry)
-            print(f"  ✅ 追加到沟通管理E列")
-            replies_data = get_sheet_data(sheets, REPLIES_SHEET)
-            continue
-
-        # 查待开发名单
-        outbox_row_i, outbox_info = find_in_outbox(outbox_data, to_email)
-        name = outbox_info.get("name", "")
-
-        # 两边都没有 → 沟通管理新建一行
-        new_row = [
-            today,
-            name,
-            sent["to_email"],
-            f"{today} 我发邮：{summary}",
-            f"{today} 我发邮：{summary}",
-            "",
-            "待回复",
-            "",
-            "",
-            "",
-            sent.get("from_email", ""),
-        ]
-        append_row(sheets, REPLIES_SHEET, new_row)
-        print(f"  ✅ 新建行（主动发出）：{sent['to_email']}")
+        append_to_history(sheets, existing_row, entry)
+        print(f"  ✅ 追加到沟通管理E列")
         replies_data = get_sheet_data(sheets, REPLIES_SHEET)
         time.sleep(1)
 

@@ -221,7 +221,8 @@ Eloise
     text = re.sub(r"```json|```", "", text).strip()
     try:
         return json.loads(text)
-    except Exception:
+    except Exception as e:
+        print(f"  ⚠️ AI JSON解析失败：{e}；原始返回：{text[:300]}")
         return {"summary": "AI解析失败，请手动查看", "stage": "其他", "suggested_reply": ""}
 
 
@@ -237,7 +238,8 @@ def ai_summarize_sent(body: str) -> str:
 """
     try:
         return model.generate_content(prompt).text.strip()
-    except Exception:
+    except Exception as e:
+        print(f"  ⚠️ 已发邮件摘要生成失败：{e}")
         return "（摘要生成失败）"
 
 # ── Gmail 工具 ────────────────────────────────────────────────────
@@ -263,7 +265,7 @@ def fetch_new_replies(gmail, last_run: datetime) -> list[dict]:
     own_emails = [acc["email"].lower() for acc in EMAIL_ACCOUNTS]
 
     for account in EMAIL_ACCOUNTS:
-        query = f"to:{account['email']} after:{since}"
+        query = f"in:inbox to:{account['email']} after:{since}"
         try:
             result = gmail.users().messages().list(
                 userId="me", q=query, maxResults=50
@@ -277,6 +279,11 @@ def fetch_new_replies(gmail, last_run: datetime) -> list[dict]:
             msg = gmail.users().messages().get(
                 userId="me", id=msg_ref["id"], format="full"
             ).execute()
+            label_ids = set(msg.get("labelIds", []))
+            if "INBOX" not in label_ids or "SENT" in label_ids or "DRAFT" in label_ids:
+                print(f"  ⏭️ 跳过非收件箱邮件：{msg_ref['id']}")
+                continue
+
             headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
             from_match = re.search(r"[\w.+-]+@[\w.+-]+\.\w+", headers.get("From", ""))
             from_email = from_match.group(0) if from_match else ""
