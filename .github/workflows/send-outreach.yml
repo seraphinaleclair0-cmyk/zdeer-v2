@@ -1,4 +1,4 @@
-name: 发开发邮件和跟进
+name: 定时发开发信和跟进（每天22:00）
 on:
   schedule:
     # 每天北京时间 22:00（UTC 14:00）
@@ -23,7 +23,7 @@ jobs:
             google-auth-httplib2 \
             google-api-python-client \
             google-generativeai
-      - name: 发开发邮件和跟进
+      - name: 发开发信和跟进信
         env:
           GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}

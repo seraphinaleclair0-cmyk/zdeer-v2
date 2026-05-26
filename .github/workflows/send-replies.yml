@@ -1,4 +1,4 @@
-name: 发回复邮件
+name: 手动发送已勾选回复
 on:
   workflow_dispatch:  # 只手动触发，打了✅后来这里点
 jobs:
@@ -20,7 +20,7 @@ jobs:
             google-auth-httplib2 \
             google-api-python-client \
             google-generativeai
-      - name: 发回复邮件
+      - name: 发送沟通管理中打勾的回复
         env:
           GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}

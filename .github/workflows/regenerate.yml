@@ -1,4 +1,4 @@
-name: 重新生成AI草稿
+name: 手动重新生成AI草稿
 on:
   workflow_dispatch:  # 只允许手动触发
 jobs:
@@ -20,7 +20,7 @@ jobs:
             google-auth-httplib2 \
             google-api-python-client \
             google-generativeai
-      - name: 重新生成草稿
+      - name: 根据指令重新生成草稿
         env:
           GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}

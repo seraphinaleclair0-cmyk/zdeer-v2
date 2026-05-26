@@ -1,4 +1,4 @@
-name: 补全MN列历史数据
+name: 一次性补全M/N列历史数据
 on:
   workflow_dispatch:  # 只手动触发，跑一次就够了
 jobs:
@@ -19,7 +19,7 @@ jobs:
             google-auth-oauthlib \
             google-auth-httplib2 \
             google-api-python-client
-      - name: 补全 M/N 列
+      - name: 补全历史 Message-ID 和 Subject
         env:
           GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
         run: python backfill_mn.py
