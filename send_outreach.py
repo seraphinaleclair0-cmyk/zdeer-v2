@@ -41,8 +41,12 @@ MAX_CONSECUTIVE_FAILURES_PER_ACCOUNT = int(
 )
 
 def is_daily_limit_error(error: str) -> bool:
-    lowered = error.lower()
-    return "daily user sending limit exceeded" in lowered or "5.4.5" in lowered
+    error_lower = error.lower()
+    return (
+        "daily user sending limit exceeded" in error_lower
+        or "5.4.5" in error_lower
+        or "daily sending limit" in error_lower
+    )
 
 # ── Sheets 工具 ───────────────────────────────────────────────────
 
@@ -111,8 +115,7 @@ def main():
     sent_count = 0
     attempted_count = 0
     consecutive_failures = {account["email"]: 0 for account in EMAIL_ACCOUNTS}
-    quota_limited_accounts: set[str] = set()
-    today = datetime.now().strftime("%Y-%m-%d")
+    blocked_accounts: set[str] = set()
 
     for i, row in enumerate(outbox_data[1:], start=2):
         if len(row) < 5:
@@ -127,27 +130,21 @@ def main():
 
         if send_flag != "✅" or status == "已发送":
             continue
-        if "额度已满" in status and today in status:
-            continue
 
         if sent_count >= MAX_OUTREACH_PER_RUN:
             print(f"  已达到本次开发邮件上限 {MAX_OUTREACH_PER_RUN}，剩余下次继续")
             break
 
         account = get_account_by_email(sender_email) if sender_email else EMAIL_ACCOUNTS[sent_count % len(EMAIL_ACCOUNTS)]
-        if account["email"] in quota_limited_accounts:
-            print(f"  ⚠️ {account['email']} 今日额度已满，跳过第{i}行")
-            update_cell(sheets, OUTBOX_SHEET, i, 6, f"额度已满 {today}：待明日重试或换发件邮箱")
-            continue
-
-        if consecutive_failures.get(account["email"], 0) >= MAX_CONSECUTIVE_FAILURES_PER_ACCOUNT:
-            print(f"  ⚠️ {account['email']} 连续失败过多，本次暂停该账号，跳过第{i}行")
+        if account["email"] in blocked_accounts:
+            print(f"  ⚠️ {account['email']} 已达到 Gmail 当日发送上限，跳过第{i}行 {name} <{to_email}>")
+            update_cell(sheets, OUTBOX_SHEET, i, 6, "未发送：发件账号今日额度已满")
             continue
 
         subject = get_outreach_subject(name)
         body    = get_outreach_body(name, tiktok_url)
 
-        print(f"  发送给 {name} <{to_email}>")
+        print(f"  使用账号 {account['email']} 发送给 {name} <{to_email}>")
         ok, error = send_email(account, to_email, subject, body)
         attempted_count += 1
 
@@ -161,8 +158,9 @@ def main():
         else:
             consecutive_failures[account["email"]] = consecutive_failures.get(account["email"], 0) + 1
             if is_daily_limit_error(error):
-                quota_limited_accounts.add(account["email"])
-                update_cell(sheets, OUTBOX_SHEET, i, 6, f"额度已满 {today}：待明日重试或换发件邮箱")
+                blocked_accounts.add(account["email"])
+                update_cell(sheets, OUTBOX_SHEET, i, 6, "未发送：发件账号今日额度已满")
+                print(f"  ⚠️ {account['email']} 已达到 Gmail 当日发送上限，本次运行将跳过该账号")
             else:
                 update_cell(sheets, OUTBOX_SHEET, i, 6, f"发送失败：{error[:80]}")
 
@@ -171,6 +169,7 @@ def main():
         time.sleep(wait)
 
     print(f"  本次尝试 {attempted_count} 封，成功发送 {sent_count} 封开发邮件")
+    print(f"  本次 blocked_accounts={sorted(blocked_accounts)}")
 
     # ── 2. 发跟进邮件 ─────────────────────────────────────────────
     print("\n📨 检查跟进邮件...")
