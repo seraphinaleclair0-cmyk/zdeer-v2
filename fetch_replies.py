@@ -18,10 +18,12 @@ import re
 import time
 from datetime import datetime, timedelta
 
+import anthropic
 import google.generativeai as genai
 from googleapiclient.discovery import build
 
 from config import (
+    ANTHROPIC_API_KEY,
     EMAIL_ACCOUNTS,
     GEMINI_API_KEY,
     GEMINI_MODEL,
@@ -142,9 +144,8 @@ def load_negotiation_cards() -> str:
 
 
 def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
-    time.sleep(4)
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel(GEMINI_MODEL)
+    time.sleep(2)
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     prompt = f"""你是一个有经验的 TikTok 红人营销 BD，正在代表品牌与达人沟通合作。
 以下是达人发来的回复邮件，请完成三件事。
 
@@ -216,13 +217,16 @@ Eloise
 可用筹码库：
 {cards}
 """
-    response = model.generate_content(prompt)
-    text = response.text.strip()
+    message = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=1000,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    text = message.content[0].text.strip()
     text = re.sub(r"```json|```", "", text).strip()
     try:
         return json.loads(text)
-    except Exception as e:
-        print(f"  ⚠️ AI JSON解析失败：{e}；原始返回：{text[:300]}")
+    except Exception:
         return {"summary": "AI解析失败，请手动查看", "stage": "其他", "suggested_reply": ""}
 
 

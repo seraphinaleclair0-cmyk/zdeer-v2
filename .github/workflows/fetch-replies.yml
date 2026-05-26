@@ -22,9 +22,11 @@ jobs:
             google-auth-oauthlib \
             google-auth-httplib2 \
             google-api-python-client \
-            google-generativeai
+            google-generativeai \
+            anthropic
       - name: 收达人回复并更新沟通管理
         env:
           GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
         run: python fetch_replies.py

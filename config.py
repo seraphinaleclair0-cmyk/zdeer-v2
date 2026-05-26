@@ -33,6 +33,7 @@ REPLIES_SHEET = "沟通管理"
 
 GEMINI_API_KEY   = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL     = "gemini-2.5-flash-lite"
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 NEGOTIATION_CARDS = "negotiation_cards.txt"
 TOKEN_JSON        = "token.json"
