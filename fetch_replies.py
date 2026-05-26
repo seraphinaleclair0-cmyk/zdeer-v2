@@ -151,6 +151,7 @@ def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
 
 语言规则：
 - summary 必须写中文，方便团队内部阅读。
+- summary 必须写中文，格式固定为：[邮件重点1]，[邮件重点2]，不超过2句话，不加「达人：」前缀
 - stage 必须写中文，只能从给定选项中选择。
 - suggested_reply 必须写自然、专业的美式英语。
 - suggested_reply 不要出现中文，不要中英混杂。
@@ -259,6 +260,9 @@ def ai_summarize_sent(body: str) -> str:
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel(GEMINI_MODEL)
     prompt = f"""请用1句中文简洁总结以下邮件的核心内容，供内部记录使用。
+格式要求：直接写重点，不加任何前缀，不超过1句话。
+例如：提议$400/条，附转化激励$300，给创意自由和ad support
+
 只返回总结内容，不要加任何前缀或说明。
 
 邮件内容：
@@ -266,8 +270,7 @@ def ai_summarize_sent(body: str) -> str:
 """
     try:
         return model.generate_content(prompt).text.strip()
-    except Exception as e:
-        print(f"  ⚠️ 已发邮件摘要生成失败：{e}")
+    except Exception:
         return "（摘要生成失败）"
 
 # ── Gmail 工具 ────────────────────────────────────────────────────
@@ -460,7 +463,7 @@ def main():
             print(f"  ⚠️ AI失败：{e}")
             ai_result = {"summary": "AI处理失败", "stage": "其他", "suggested_reply": ""}
 
-        summary_entry = f"{today} 达人回复：{ai_result['summary']}"
+        summary_entry = f"{today} 达人：{ai_result['summary']}"
 
         if existing_row:
             # 已有达人 → 更新 A/D/E/F/G/I/M/N 列，不动 H/J/K/L
@@ -524,7 +527,7 @@ def main():
             continue
 
         summary = ai_summarize_sent(sent["body"])
-        entry = f"{today} 我回复：{summary}"
+        entry = f"{today} 我方：{summary}"
         append_to_history(sheets, existing_row, entry)
         print(f"  ✅ 追加到E列")
         replies_data = get_sheet_data(sheets, REPLIES_SHEET)

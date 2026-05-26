@@ -149,6 +149,7 @@ def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
 
 语言规则：
 - summary 必须写中文，方便团队内部阅读。
+- summary 必须写中文，格式固定为：[邮件重点1]，[邮件重点2]，不超过2句话，不加「达人：」前缀
 - stage 必须写中文，只能从给定选项中选择。
 - suggested_reply 必须写自然、专业的美式英语。
 - suggested_reply 不要出现中文，不要中英混杂。
@@ -338,15 +339,13 @@ def main():
                 continue
 
             print(f"  ✅ 新建：{from_email}")
-            current_entry = f"{today} 达人来信：{body[:500]}"
-
             try:
-                ai_result = ai_process_reply(body, current_entry, cards)
+                ai_result = ai_process_reply(body, "", cards)
             except Exception as e:
                 print(f"  ⚠️ AI失败：{e}")
                 ai_result = {"summary": "AI处理失败", "stage": "其他", "suggested_reply": ""}
 
-            summary_entry = f"{today} 达人回复：{ai_result['summary']}"
+            summary_entry = f"{today} 达人：{ai_result['summary']}"
             outbox_row_i, outbox_info = find_in_outbox(outbox_data, from_email)
             name = outbox_info.get("name", "")
 
@@ -359,7 +358,7 @@ def main():
                 name,
                 from_email,
                 summary_entry,
-                f"{summary_entry} | {current_entry}",
+                summary_entry,
                 ai_result["stage"],
                 "待回复",
                 "",
