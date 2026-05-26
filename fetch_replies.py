@@ -192,7 +192,13 @@ def load_negotiation_cards() -> str:
     return ""
 
 
-def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
+def ai_process_reply(
+    reply_body: str,
+    latest_summary: str,
+    history: str,
+    user_instruction: str,
+    cards: str,
+) -> dict:
     time.sleep(2)
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     prompt = f"""你是一个有经验的 TikTok 红人营销 BD，正在代表品牌与达人沟通合作。
@@ -210,6 +216,111 @@ def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
 - 筹码库里的所有条件都是真实存在、可以直接用的，不需要用户在指令里重复提醒。
 - 写回复时，根据当前阶段主动把相关筹码自然地融入邮件，不要遗漏。
 - 转化激励金额固定是：带货达 $5,000，额外奖励 $300，不得改成其他数字。
+
+上下文优先级规则（非常重要）：
+
+信息优先级：
+
+1. H列「本次人工指令」决定这封邮件的核心目标，是最高优先级。
+2. D列「最新沟通摘要」代表当前合作状态，必须优先参考。
+3. E列「过往沟通记录」用于理解历史上下文、双方关系、达人顾虑、已确认条款和沟通语气。
+4. 当前邮件是本轮需要回应的对象。
+
+写 suggested_reply 前，必须先判断：
+
+* 双方当前已经推进到哪个阶段
+* 哪些问题已经解决
+* 哪些条件已经确认
+* 对方此刻最在意什么
+* 本次人工指令真正希望推进什么
+
+suggested_reply 写作规则：
+
+1. 邮件必须先自然回应达人最新邮件，再推进本次人工指令。
+2. 即使 H列 有明确任务，也不能机械执行，要保持真人沟通感。
+3. 可以自然加入：
+
+* 感谢回复
+* 回应确认
+* 承接情绪
+* 简短寒暄
+  但这些只能作为“承接”，不能抢走邮件主目标。
+
+4. suggested_reply 的核心目标必须围绕 H列人工指令推进。
+5. 不要擅自新增新的谈判目标、报价、合作条件或产品介绍。
+6. 如果当前阶段已经进入：
+
+* 合同确认
+* 付款
+* 账号确认
+* 发布时间
+* 内容执行
+  则禁止重新写：
+* 初次合作邀约
+* 产品介绍
+* creative freedom
+* bonus机制
+* ad support
+* 案例视频
+* 旧报价
+
+除非：
+
+* 达人最新邮件重新提到
+* 或 H列人工指令明确要求重新讨论
+
+E列使用规则：
+
+E列不是“参考资料”，而是长期上下文。
+
+写邮件时，应参考 E列 来保持：
+
+* 语气连续性
+* 谈判逻辑连续性
+* 双方熟悉程度
+* 沟通节奏
+* 已确认事实一致性
+
+但不要重复：
+
+* 已确认报价
+* 初次合作邀约
+* 已解决的问题
+* 已谈妥的条款
+  除非当前邮件或 H列再次提及。
+
+特殊规则：
+
+如果 H列只是：
+
+* 确认账号
+* 确认付款
+* 确认合同
+* 确认发布时间
+* 确认物流
+  等具体事项，
+
+则邮件应简洁自然，
+只完成当前确认动作，
+不要为了“显得完整”而额外加入：
+
+* 报价
+* bonus
+* ad support
+* creative freedom
+* 产品卖点
+* 案例链接
+* 合作介绍
+
+suggested_reply 理想逻辑：
+
+1. 自然回应当前邮件
+2. 承接当前沟通氛围
+3. 推进 H列核心目标
+4. 简洁结束
+
+目标：
+让邮件像一个真实、有上下文记忆、长期跟进达人合作的 BD 在写，而不是像 AI 模板回复。
 
 写邮件前必须先做以下分析，再动笔：
 1. 对方现在最担心什么？从邮件和过往沟通里找，如果有顾虑，第一优先级是解决它。
@@ -278,8 +389,14 @@ Eloise
 邮件内容：
 {reply_body}
 
-过往沟通记录：
+最新沟通摘要（D列）：
+{latest_summary if latest_summary else "无"}
+
+过往沟通记录（E列）：
 {history if history else "无"}
+
+本次人工指令（H列，最高优先级）：
+{user_instruction if user_instruction else "无"}
 
 请严格按以下 JSON 格式返回，不要加任何其他内容：
 {{
@@ -618,10 +735,18 @@ def main():
         reply_date = _parse_email_date(reply.get("date", ""), today)
         existing_row = find_in_replies(replies_data, from_email)
 
-        # 获取过往沟通
+        # 获取最新摘要、过往沟通和人工指令
+        latest_summary = ""
         history = ""
-        if existing_row and len(replies_data[existing_row - 1]) > 4:
-            history = replies_data[existing_row - 1][4].strip()
+        user_instruction = ""
+        if existing_row:
+            row = replies_data[existing_row - 1]
+            if len(row) > 3:
+                latest_summary = row[3].strip()
+            if len(row) > 4:
+                history = row[4].strip()
+            if len(row) > 7:
+                user_instruction = row[7].strip()
 
         # 把当前这封新邮件也拼进 history，让 AI 看到完整上下文
         current_email_entry = f"{reply_date} 达人来信：{reply['body'][:500]}"
@@ -629,7 +754,13 @@ def main():
 
         # AI 处理
         try:
-            ai_result = ai_process_reply(reply["body"], full_history, cards)
+            ai_result = ai_process_reply(
+                reply["body"],
+                latest_summary,
+                full_history,
+                user_instruction,
+                cards,
+            )
         except Exception as e:
             print(f"  ⚠️ AI失败：{e}")
             ai_result = {"summary": "AI处理失败", "stage": "其他", "suggested_reply": ""}
