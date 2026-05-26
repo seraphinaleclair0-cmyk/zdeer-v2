@@ -210,6 +210,7 @@ def ai_process_reply(
 - stage 必须写中文，只能从给定选项中选择。
 - suggested_reply 必须写自然、专业的美式英语。
 - suggested_reply 不要出现中文，不要中英混杂。
+- 如果 H列「本次人工指令」为空或为「无」，suggested_reply 必须返回空字符串，不要生成回复邮件。
 - 不要编造任何数据，例如播放量、点赞数、销售额等，筹码库里没有提到的数字一律不写。
 
 筹码库使用规则（重要）：
@@ -735,18 +736,15 @@ def main():
         reply_date = _parse_email_date(reply.get("date", ""), today)
         existing_row = find_in_replies(replies_data, from_email)
 
-        # 获取最新摘要、过往沟通和人工指令
+        # 获取最新摘要和过往沟通。收邮件时不读取H列指令，不自动生成I列回复。
         latest_summary = ""
         history = ""
-        user_instruction = ""
         if existing_row:
             row = replies_data[existing_row - 1]
             if len(row) > 3:
                 latest_summary = row[3].strip()
             if len(row) > 4:
                 history = row[4].strip()
-            if len(row) > 7:
-                user_instruction = row[7].strip()
 
         # 把当前这封新邮件也拼进 history，让 AI 看到完整上下文
         current_email_entry = f"{reply_date} 达人来信：{reply['body'][:500]}"
@@ -758,7 +756,7 @@ def main():
                 reply["body"],
                 latest_summary,
                 full_history,
-                user_instruction,
+                "",
                 cards,
             )
         except Exception as e:
@@ -768,15 +766,13 @@ def main():
         summary_entry = f"{reply_date} 达人：{ai_result['summary']}"
 
         if existing_row:
-            # 已有达人 → 更新 A/D/E/F/G/I/M/N 列，不动 H/J/K/L
+            # 已有达人 → 更新 A/D/E/F/G/M/N 列，不动 H/I/J/K/L
             print(f"  更新已有达人：{from_email}")
             update_cell(sheets, REPLIES_SHEET, existing_row, 1, reply_date)         # A 日期
             update_cell(sheets, REPLIES_SHEET, existing_row, 4, summary_entry)       # D 回复摘要
             append_to_history(sheets, existing_row, summary_entry)                    # E 过往沟通追加
             update_cell(sheets, REPLIES_SHEET, existing_row, 6, ai_result["stage"])  # F 当前阶段
             update_cell(sheets, REPLIES_SHEET, existing_row, 7, "待回复")             # G 状态
-            if ai_result["suggested_reply"]:
-                update_cell(sheets, REPLIES_SHEET, existing_row, 9, ai_result["suggested_reply"])  # I AI回复
             update_cell(sheets, REPLIES_SHEET, existing_row, 13, reply.get("message_id", ""))  # M Message-ID
             update_cell(sheets, REPLIES_SHEET, existing_row, 14, reply.get("subject", ""))     # N Subject
         else:
@@ -808,7 +804,7 @@ def main():
                 ai_result["stage"],               # F 当前阶段
                 "待回复",                          # G 状态
                 "",                               # H 你的指令
-                ai_result["suggested_reply"],     # I AI生成回复
+                "",                               # I AI生成回复，等H列有指令后再生成
                 "",                               # J 发送
                 receiver_email,                  # K 收件邮箱
                 "",                               # L 用户自用

@@ -208,6 +208,7 @@ def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
 - stage 必须写中文，只能从给定选项中选择。
 - suggested_reply 必须写自然、专业的美式英语。
 - suggested_reply 不要出现中文，不要中英混杂。
+- 这个脚本只补历史记录，不生成回复邮件，suggested_reply 必须返回空字符串。
 - 不要编造任何数据，筹码库里没有提到的数字一律不写。
 
 筹码库使用规则（重要）：
@@ -288,7 +289,7 @@ Eloise
 {{
   "summary": "用1-2句中文概括回复的核心内容",
   "stage": "从以下选一个：初次感兴趣 / 价格谈判中 / 犹豫不决 / 已拒绝可挽回 / 已成交 / 其他",
-  "suggested_reply": "根据阶段和筹码库，用美式英语写一封完整的建议回复邮件"
+  "suggested_reply": ""
 }}
 
 可用筹码库：
@@ -556,7 +557,7 @@ def main():
                 ai_result["stage"],
                 "待回复",
                 "",
-                ai_result["suggested_reply"],
+                "",
                 "",
                 account["email"],
                 "",
