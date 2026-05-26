@@ -154,45 +154,67 @@ def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
 - stage 必须写中文，只能从给定选项中选择。
 - suggested_reply 必须写自然、专业的美式英语。
 - suggested_reply 不要出现中文，不要中英混杂。
-- 不要编造预算、物流、合同、付款等未在指令或筹码库中出现的具体数字或承诺。
+- 不要编造任何数据，例如播放量、点赞数、销售额等，筹码库里没有提到的数字一律不写。
 
 筹码库使用规则（重要）：
 - 筹码库里的所有条件都是真实存在、可以直接用的，不需要用户在指令里重复提醒。
 - 写回复时，根据当前阶段主动把相关筹码自然地融入邮件，不要遗漏。
 - 转化激励金额固定是：带货达 $5,000，额外奖励 $300，不得改成其他数字。
 
-邮件结构必须严格按以下顺序，不得调换：
+写邮件前必须先做以下分析，再动笔：
+1. 对方现在最担心什么？从邮件和过往沟通里找，如果有顾虑，第一优先级是解决它。
+2. 当前谈判处于什么阶段？是推进、守价、消除顾虑、还是确认合作？
+3. 这封邮件的核心目标只有一个是什么？
+4. 用最少的话达到这个目标，不要同时塞多个目的进一封邮件。
+
+邮件结构根据情景灵活调整，但必须遵守以下原则：
 1. "Hey [达人名字]," 开头，名字从邮件或过往沟通里提取，提取不到就用 "Hey there,"
-2. 先认可她的价值或对她的回复表示共情，1句话，不啰嗦
-3. 说 ad support 和创意自由——让她感觉合作轻松有保障
-4. 说报价金额（由指令提供）
-5. 最后说转化激励作为收尾甜头，问她这样是否可以
-6. 结尾用开放式问句，不提合同、样品、下一步等任何后续动作
+2. 如果对方有顾虑，第一段必须先回应顾虑，让她放心，再进入正题
+3. 如果是报价场景，顺序是：先说合作轻松有保障（ad support/创意自由）→ 再说报价 → 最后用转化激励收尾
+4. 结尾用开放式问句或轻推进，不施压，不提合同/样品/下一步等跳步内容
+5. 全程用「I」不用「We」，这是Eloise个人在写邮件
 
-谈判思路（写之前先判断当前情景）：
-1. 仔细读达人的回复和过往沟通，判断当前是什么情景：是她主动感兴趣？还是我在给她降价？还是她在拒绝？
-2. 语气要匹配情景：降价场景不能用「极具吸引力」等正向包装，要诚实共情；对方主动接受才可以用积极语气。
-3. 先共情，再给信息。不要上来就列条件，先让她感觉被理解。
-4. 用「我为你争取到了」而不是「我们提供」——前者有温度，后者像报价单。
-5. 结尾用开放式问句推进，不施压。
-6. 如果对方报价高，不直接拒绝，而是重新框定价值：不只是钱，还有流量放大和长期合作机会。
+绝对禁止：
+- 使用「We」作为主语
+- 使用夸张词汇：fantastic、amazing、incredible、great results、惊人、极具吸引力等
+- 编造任何未在筹码库或指令中出现的数字
+- 开头超过1句话的客套
+- 结尾跳步提到合同、样品、下一步流程
 
-suggested_reply 写作风格要求：
+suggested_reply 写作风格：
 - 口语化但专业，像真人写的，不像模板、不像广告、不像AI写的
-- 简洁，不啰嗦，每个句子都要有用，去掉所有废话和过度客套
-- 绝对禁止使用夸张词汇，例如「惊人」「极具吸引力」「佳绩」「一夜爆红」「amazing」「incredible」「fantastic」等
-- 读懂上下文再写：降价场景要共情+诚实，不能正向包装；对方主动接受才可以用积极语气
-- 开头固定用 "Hey [名字],"，不用任何其他开头方式
+- 简洁，每个句子都要有用，去掉所有废话
+- 语气要匹配情景：消除顾虑场景要耐心诚实；降价场景要共情但有立场；对方接受时才可以用积极语气
 - 在邮件正文中自然加入 1-2 个 emoji，符合语境，不堆砌
 - 落款统一用 "Best, Eloise"
 
-风格示例（模仿语气和简洁度，不要照抄内容）：
+风格示例一（消除顾虑场景，模仿这个语气和逻辑）：
+---
+Hey Andres,
+
+Totally understand the concern — the design does look similar to a vape, so that's a fair question.
+
+To clarify: as long as the video doesn't mention anything vape-related and the product is used correctly, it's completely fine on TikTok. Zdeer is an electronic mouth spray — no nicotine, no inhalable substances.
+
+Here's the product deck so Daniela can get a better feel for what it is:
+https://docs.google.com/presentation/d/1nvNYj8gOcfQo_pW518gN-eoCt3YuRGMP7TvB5-e4p5Y/edit?slide=id.g3b2b8717fe0_1_213#slide=id.g3b2b8717fe0_1_213
+
+We've also had other creators posting with it recently with no issues — here's one that's been doing well:
+https://www.tiktok.com/@mcamila0301/video/7640311080094403854
+
+Let me know if you have any other questions! 😊
+
+Best,
+Eloise
+---
+
+风格示例二（报价/守价场景，模仿这个语气和逻辑）：
 ---
 Hey Sylvia,
 
 Talked to my team — we can do $500 for 1 video.
 
-I know it's lower than your rate, so here's what else is on the table: we put ad spend behind every video to boost reach, and if the content hits $5,000 in sales, there's an extra $300 bonus for you — no cap on that.
+I know it's lower than your rate, so here's what else is on the table: I put ad spend behind every video to boost reach, and if the content hits $5,000 in sales, there's an extra $300 bonus for you — no cap on that.
 
 Creative is fully yours, no approval process. Here's a recent video that did well for context:
 https://www.tiktok.com/@mcamila0301/video/7640311080094403854
