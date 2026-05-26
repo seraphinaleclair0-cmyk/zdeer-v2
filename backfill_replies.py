@@ -32,6 +32,7 @@ from google_auth import get_creds
 
 START_QUERY_DATE = "2026/05/20"  # Gmail after: is used to include 2026-05-21.
 START_LABEL = "2026-05-21"
+STATUS_OPTIONS = ["待回复", "已回复", "已放弃", "无需回复"]
 
 
 def get_sheet_data(sheets, sheet_name: str) -> list:
@@ -59,6 +60,53 @@ def update_cell(sheets, sheet_name: str, row: int, col: int, value: str):
         range=f"{sheet_name}!{col_letter}{row}",
         valueInputOption="RAW",
         body={"values": [[value]]},
+    ).execute()
+
+
+def get_sheet_id(sheets, sheet_name: str):
+    spreadsheet = sheets.spreadsheets().get(
+        spreadsheetId=SHEET_ID,
+        fields="sheets(properties(sheetId,title))",
+    ).execute()
+    for sheet in spreadsheet.get("sheets", []):
+        props = sheet.get("properties", {})
+        if props.get("title") == sheet_name:
+            return props.get("sheetId")
+    return None
+
+
+def ensure_status_dropdown(sheets):
+    sheet_id = get_sheet_id(sheets, REPLIES_SHEET)
+    if sheet_id is None:
+        print(f"  ⚠️ 找不到工作表：{REPLIES_SHEET}，无法设置G列状态下拉")
+        return
+
+    values = [{"userEnteredValue": value} for value in STATUS_OPTIONS]
+    sheets.spreadsheets().batchUpdate(
+        spreadsheetId=SHEET_ID,
+        body={
+            "requests": [
+                {
+                    "setDataValidation": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": 1,
+                            "startColumnIndex": 6,
+                            "endColumnIndex": 7,
+                        },
+                        "rule": {
+                            "condition": {
+                                "type": "ONE_OF_LIST",
+                                "values": values,
+                            },
+                            "inputMessage": "请选择状态",
+                            "strict": True,
+                            "showCustomUi": True,
+                        },
+                    }
+                }
+            ]
+        },
     ).execute()
 
 
@@ -353,6 +401,8 @@ def main():
     gmail = build("gmail", "v1", credentials=creds)
     sheets = build("sheets", "v4", credentials=creds)
     cards = load_negotiation_cards()
+
+    ensure_status_dropdown(sheets)
 
     own_emails = {acc["email"].lower() for acc in EMAIL_ACCOUNTS}
     replies_data = get_sheet_data(sheets, REPLIES_SHEET)

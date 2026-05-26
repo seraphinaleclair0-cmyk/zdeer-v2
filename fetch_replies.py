@@ -42,6 +42,7 @@ REPLIES_COLS = [
     "Message-ID", "Subject",
 ]
 CONFIG_SHEET = "系统配置"
+STATUS_OPTIONS = ["待回复", "已回复", "已放弃", "无需回复"]
 
 # ── 时间戳 ────────────────────────────────────────────────────────
 
@@ -120,6 +121,53 @@ def ensure_headers(sheets, sheet_name: str, headers: list):
             valueInputOption="RAW",
             body={"values": [merged]},
         ).execute()
+
+
+def get_sheet_id(sheets, sheet_name: str):
+    spreadsheet = sheets.spreadsheets().get(
+        spreadsheetId=SHEET_ID,
+        fields="sheets(properties(sheetId,title))",
+    ).execute()
+    for sheet in spreadsheet.get("sheets", []):
+        props = sheet.get("properties", {})
+        if props.get("title") == sheet_name:
+            return props.get("sheetId")
+    return None
+
+
+def ensure_status_dropdown(sheets):
+    sheet_id = get_sheet_id(sheets, REPLIES_SHEET)
+    if sheet_id is None:
+        print(f"  ⚠️ 找不到工作表：{REPLIES_SHEET}，无法设置G列状态下拉")
+        return
+
+    values = [{"userEnteredValue": value} for value in STATUS_OPTIONS]
+    sheets.spreadsheets().batchUpdate(
+        spreadsheetId=SHEET_ID,
+        body={
+            "requests": [
+                {
+                    "setDataValidation": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": 1,
+                            "startColumnIndex": 6,
+                            "endColumnIndex": 7,
+                        },
+                        "rule": {
+                            "condition": {
+                                "type": "ONE_OF_LIST",
+                                "values": values,
+                            },
+                            "inputMessage": "请选择状态",
+                            "strict": True,
+                            "showCustomUi": True,
+                        },
+                    }
+                }
+            ]
+        },
+    ).execute()
 
 
 def append_to_history(sheets, row_index: int, new_entry: str):
@@ -528,6 +576,7 @@ def main():
     print(f"  上次收邮件时间（UTC）：{last_run.strftime('%Y-%m-%d %H:%M:%S')}")
 
     ensure_headers(sheets, REPLIES_SHEET, REPLIES_COLS)
+    ensure_status_dropdown(sheets)
 
     replies_data = get_sheet_data(sheets, REPLIES_SHEET)
     outbox_data  = get_sheet_data(sheets, OUTBOX_SHEET)
