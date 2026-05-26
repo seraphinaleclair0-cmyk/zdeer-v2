@@ -277,6 +277,32 @@ def fetch_new_replies(gmail, last_run: datetime) -> list[dict]:
             if from_email.lower() in own_emails:
                 continue
 
+            # ── 新增：检查 thread 里是否真的有外部人回复 ──────────
+            thread_id = msg.get("threadId", "")
+            if thread_id:
+                try:
+                    thread = gmail.users().threads().get(
+                        userId="me", id=thread_id, format="metadata",
+                        metadataHeaders=["From"]
+                    ).execute()
+                    thread_msgs = thread.get("messages", [])
+                    has_external = False
+                    for tm in thread_msgs:
+                        tm_from = next(
+                            (h["value"] for h in tm["payload"]["headers"] if h["name"] == "From"),
+                            ""
+                        )
+                        tm_email_match = re.search(r"[\w.+-]+@[\w.+-]+\.\w+", tm_from)
+                        if tm_email_match and tm_email_match.group(0).lower() not in own_emails:
+                            has_external = True
+                            break
+                    if not has_external:
+                        print(f"  ⏭️ 跳过无回复线程：{from_email}")
+                        continue
+                except Exception as e:
+                    print(f"  ⚠️ 检查线程失败，默认保留：{e}")
+            # ── 新增结束 ───────────────────────────────────────────
+
             body = _extract_body(msg)
             if from_email and body:
                 all_replies.append({
