@@ -38,6 +38,10 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          GOOGLE_TOKEN_JSON_1: ${{ secrets.GOOGLE_TOKEN_JSON_1 }}
+          GOOGLE_TOKEN_JSON_2: ${{ secrets.GOOGLE_TOKEN_JSON_2 }}
+          GOOGLE_TOKEN_JSON_3: ${{ secrets.GOOGLE_TOKEN_JSON_3 }}
+          GOOGLE_TOKEN_JSON_4: ${{ secrets.GOOGLE_TOKEN_JSON_4 }}
           BACKFILL_START_DATE: ${{ inputs.start_date }}
           BACKFILL_END_DATE: ${{ inputs.end_date }}
           CLAUDE_MODEL: claude-haiku-4-5

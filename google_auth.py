@@ -9,9 +9,9 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
 ]
 
-def get_creds(token_json="token.json", credentials_json="credentials.json") -> Credentials:
+def get_creds(token_json="token.json", credentials_json="credentials.json", token_env_var="GOOGLE_TOKEN_JSON") -> Credentials:
     creds = None
-    token_env = os.environ.get("GOOGLE_TOKEN_JSON")
+    token_env = os.environ.get(token_env_var)
     if token_env:
         creds = Credentials.from_authorized_user_info(json.loads(token_env), SCOPES)
     elif os.path.exists(token_json):

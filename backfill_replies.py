@@ -525,6 +525,34 @@ def read_message(gmail, msg_id: str) -> dict:
     ).execute()
 
 
+def build_gmail_for_account(account: dict, account_index: int, default_creds):
+    token_env_var = f"GOOGLE_TOKEN_JSON_{account_index}"
+    if os.environ.get(token_env_var, "").strip():
+        creds = get_creds(token_env_var=token_env_var)
+        token_source = token_env_var
+    else:
+        creds = default_creds
+        token_source = "GOOGLE_TOKEN_JSON"
+
+    gmail = build("gmail", "v1", credentials=creds)
+    configured_email = account["email"].lower()
+    try:
+        profile_email = gmail.users().getProfile(userId="me").execute().get("emailAddress", "").lower()
+    except Exception as e:
+        print(f"  ⚠️ 无法读取 Gmail 登录账号：{configured_email} / {e}")
+        profile_email = ""
+
+    if profile_email and profile_email != configured_email:
+        print(
+            f"  ⚠️ {configured_email} 使用的是 {token_source}，"
+            f"Gmail API 实际登录账号为 {profile_email}；如果它不是别名/转发邮箱，需要配置 {token_env_var}"
+        )
+    else:
+        print(f"  Gmail token：{configured_email} <- {token_source}")
+
+    return gmail, profile_email
+
+
 def get_existing_history(sheets, row_index: int) -> str:
     if not row_index:
         return ""
@@ -688,7 +716,6 @@ def main():
     print("  规则：G=已放弃整行跳过；O列控制增量处理；thread补全我方/达人历史")
 
     creds = get_creds()
-    gmail = build("gmail", "v1", credentials=creds)
     sheets = build("sheets", "v4", credentials=creds)
     cards = load_negotiation_cards()
 
@@ -703,7 +730,8 @@ def main():
     skipped_empty = 0
 
     # 1) inbox 中的达人回复作为新建/更新触发源
-    for account in EMAIL_ACCOUNTS:
+    for account_index, account in enumerate(EMAIL_ACCOUNTS, start=1):
+        gmail, _profile_email = build_gmail_for_account(account, account_index, creds)
         query = f"in:inbox to:{account['email']} {date_query}"
         print(f"\n📥 扫描 inbox：{account['email']}...")
 
@@ -764,61 +792,65 @@ def main():
             time.sleep(1)
 
     # 2) sent 中的我方邮件只更新「已经在沟通管理表里」的达人，不新建纯开发信
-    print(f"\n📤 扫描 sent：只补已有沟通管理达人的我方新邮件...")
-    try:
-        sent_messages = list_all_messages(gmail, f"in:sent {date_query}")
-    except Exception as e:
-        print(f"  ⚠️ sent扫描失败：{e}")
-        sent_messages = []
-
     replies_data = get_sheet_data(sheets, REPLIES_SHEET)
     existing_replies_emails = get_existing_replies_emails(replies_data)
-    print(f"  找到 {len(sent_messages)} 封 sent 候选邮件；沟通管理已有 {len(existing_replies_emails)} 个邮箱")
+    print(f"\n📤 扫描 sent：只补已有沟通管理达人的我方新邮件...")
+    print(f"  沟通管理已有 {len(existing_replies_emails)} 个邮箱")
 
-    for msg_ref in sent_messages:
+    for account_index, account in enumerate(EMAIL_ACCOUNTS, start=1):
+        gmail, profile_email = build_gmail_for_account(account, account_index, creds)
         try:
-            msg = read_message(gmail, msg_ref["id"])
+            sent_messages = list_all_messages(gmail, f"in:sent {date_query}")
         except Exception as e:
-            print(f"  ⚠️ 读取sent邮件失败：{msg_ref.get('id')} / {e}")
+            print(f"  ⚠️ sent扫描失败：{account['email']} / {e}")
             continue
 
-        headers = parse_headers(msg)
-        recipients = set()
-        for header_name in ("To", "Cc", "Bcc"):
-            recipients.update(extract_emails(headers.get(header_name, "")))
+        print(f"  {account['email']} 找到 {len(sent_messages)} 封 sent 候选邮件")
 
-        matched_targets = recipients & existing_replies_emails
-        if not matched_targets:
-            continue
-
-        thread_id = msg.get("threadId", "")
-        if not thread_id:
-            continue
-
-        from_email = extract_email(headers.get("From", ""))
-        account_email = from_email if from_email in own_emails else ""
-
-        for target_email in matched_targets:
-            key = (target_email, thread_id)
-            if key in processed_keys:
+        for msg_ref in sent_messages:
+            try:
+                msg = read_message(gmail, msg_ref["id"])
+            except Exception as e:
+                print(f"  ⚠️ 读取sent邮件失败：{msg_ref.get('id')} / {e}")
                 continue
-            processed_keys.add(key)
 
-            ok, message = process_thread_for_target(
-                gmail=gmail,
-                sheets=sheets,
-                cards=cards,
-                outbox_data=outbox_data,
-                own_emails=own_emails,
-                target_email=target_email,
-                thread_id=thread_id,
-                account_email=account_email,
-                allow_create=False,
-            )
-            print(f"  {message}")
-            if ok:
-                added_or_updated += 1
-            time.sleep(1)
+            headers = parse_headers(msg)
+            recipients = set()
+            for header_name in ("To", "Cc", "Bcc"):
+                recipients.update(extract_emails(headers.get(header_name, "")))
+
+            matched_targets = recipients & existing_replies_emails
+            if not matched_targets:
+                continue
+
+            thread_id = msg.get("threadId", "")
+            if not thread_id:
+                continue
+
+            from_email = extract_email(headers.get("From", ""))
+            account_email = from_email if from_email in own_emails else profile_email
+
+            for target_email in matched_targets:
+                key = (target_email, thread_id)
+                if key in processed_keys:
+                    continue
+                processed_keys.add(key)
+
+                ok, message = process_thread_for_target(
+                    gmail=gmail,
+                    sheets=sheets,
+                    cards=cards,
+                    outbox_data=outbox_data,
+                    own_emails=own_emails,
+                    target_email=target_email,
+                    thread_id=thread_id,
+                    account_email=account_email,
+                    allow_create=False,
+                )
+                print(f"  {message}")
+                if ok:
+                    added_or_updated += 1
+                time.sleep(1)
 
     print(f"""
 🎉 补全完成 — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
