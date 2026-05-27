@@ -11,6 +11,10 @@ on:
         description: "结束日期 YYYY-MM-DD；不填则按邮箱搜索全部相关邮件"
         required: false
         default: ""
+      force_rebuild:
+        description: "是否强制重建 E 列历史；填 1 开启"
+        required: false
+        default: ""
 
 jobs:
   backfill:
@@ -40,4 +44,5 @@ jobs:
           GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
           BACKFILL_START_DATE: ${{ inputs.start_date }}
           BACKFILL_END_DATE: ${{ inputs.end_date }}
+          BACKFILL_FORCE_REBUILD: ${{ inputs.force_rebuild }}
         run: python backfill_by_creators_same_sheet_gemini.py

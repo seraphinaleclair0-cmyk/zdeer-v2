@@ -22,21 +22,24 @@ O 最后处理邮件时间
 - G 列为「已放弃」或「无需回复」的行会跳过
 - O 列记录 Gmail internalDate，用于下次增量处理
 - 默认按邮箱搜索全部相关邮件；可用 BACKFILL_START_DATE / BACKFILL_END_DATE 限定候选日期
+- 可设置 BACKFILL_FORCE_REBUILD=1 强制重建 E 列历史
 """
 
 from datetime import datetime, timedelta
 import os
+import re
 import time
 from typing import Optional
 
+from google import genai
+from google.genai import types
 from googleapiclient.discovery import build
 
+import config
 from config import EMAIL_ACCOUNTS, REPLIES_SHEET, SHEET_ID
 from google_auth import get_creds
 
 from backfill_replies import (
-    ai_process_reply,
-    ai_summarize_history_message,
     append_to_history,
     build_gmail_date_query,
     collect_thread_messages,
@@ -55,6 +58,26 @@ from backfill_replies import (
 )
 
 SKIP_STATUSES = {"已放弃", "无需回复"}
+STAGE_OPTIONS = {"初次感兴趣", "价格谈判中", "犹豫不决", "已拒绝可挽回", "已成交", "其他"}
+
+GEMINI_API_KEY = getattr(config, "GEMINI_API_KEY", "") or os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
+
+def gemini_generate_text(prompt: str, max_tokens: int = 500) -> str:
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is empty. Please add it to GitHub Secrets and config.py/env.")
+
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.1,
+            max_output_tokens=max_tokens,
+        ),
+    )
+    return (response.text or "").strip()
 
 
 def parse_date(value: str) -> datetime:
@@ -110,10 +133,80 @@ def account_email_for_thread_items(thread_items: list[dict], own_emails: set[str
     return ""
 
 
+def ai_summarize_message(body: str, speaker: str) -> str:
+    prompt = f"""请把下面这封邮件总结成一句中文语义摘要，用于达人沟通历史。
+
+要求：
+- 只输出一句中文，不要加前缀
+- 不要复制原文长句，不要截取正文
+- 说明邮件的真实意思、诉求或进展
+- 不超过45个中文字符
+- 如果信息很少，也要概括成内部能看懂的一句话
+
+邮件角色：{speaker}
+邮件内容：
+{body[:2500]}
+"""
+    try:
+        text = gemini_generate_text(prompt, max_tokens=180)
+        return re.sub(r"\s+", " ", text).strip() or "摘要生成失败，请手动查看"
+    except Exception as e:
+        print(f"  ⚠️ Gemini摘要失败：{e}")
+        return "摘要生成失败，请手动查看"
+
+
+def parse_summary_stage(text: str) -> tuple[str, str]:
+    summary = ""
+    stage = "其他"
+
+    for line in text.splitlines():
+        line = line.strip()
+        if line.upper().startswith("SUMMARY:"):
+            summary = line.split(":", 1)[1].strip()
+        elif line.upper().startswith("STAGE:"):
+            stage = line.split(":", 1)[1].strip()
+
+    if stage not in STAGE_OPTIONS:
+        stage = "其他"
+    return summary or "摘要生成失败，请手动查看", stage
+
+
+def ai_analyze_latest_influencer_message(body: str, history: str, cards: str) -> dict:
+    prompt = f"""你是一个有经验的 TikTok 红人营销 BD，正在代表品牌与达人沟通合作。
+请分析下面这封最新达人邮件，只输出两行：
+
+SUMMARY: 一句中文摘要，不超过45个中文字符
+STAGE: 从以下选一个：初次感兴趣 / 价格谈判中 / 犹豫不决 / 已拒绝可挽回 / 已成交 / 其他
+
+规则：
+- 不要输出 JSON
+- 不要加代码块
+- SUMMARY 必须是语义摘要，不要截取原文
+- STAGE 必须完全等于给定选项之一
+- 不要编造邮件中没有的信息
+
+最新达人邮件：
+{body[:2500]}
+
+过往沟通：
+{history if history else "无"}
+
+可用筹码库：
+{cards}
+"""
+    try:
+        text = gemini_generate_text(prompt, max_tokens=260)
+        summary, stage = parse_summary_stage(text)
+        return {"summary": summary, "stage": stage}
+    except Exception as e:
+        print(f"  ⚠️ Gemini分析最新达人邮件失败：{e}")
+        return {"summary": "摘要生成失败，请手动查看", "stage": "其他"}
+
+
 def summarize_new_items(new_items: list[dict], latest_influencer_item: Optional[dict], existing_history: str, cards: str):
     ai_reply_result = None
     if latest_influencer_item:
-        ai_reply_result = ai_process_reply(
+        ai_reply_result = ai_analyze_latest_influencer_message(
             latest_influencer_item["body"],
             existing_history,
             cards,
@@ -129,7 +222,7 @@ def summarize_new_items(new_items: list[dict], latest_influencer_item: Optional[
         ):
             summary = ai_reply_result["summary"]
         else:
-            summary = ai_summarize_history_message(item["body"])
+            summary = ai_summarize_message(item["body"], item["speaker"])
 
         summary_by_internal_date[item["internal_date"]] = {
             "summary": summary,
@@ -140,7 +233,7 @@ def summarize_new_items(new_items: list[dict], latest_influencer_item: Optional[
     return ai_reply_result, summary_by_internal_date
 
 
-def process_sheet_row(gmail, sheets, cards: str, row_index: int, row: list, own_emails: set[str], date_query: str) -> tuple[bool, str]:
+def process_sheet_row(gmail, sheets, cards: str, row_index: int, row: list, own_emails: set[str], date_query: str, force_rebuild: bool) -> tuple[bool, str]:
     name = row_value(row, 1)
     target_email = row_value(row, 2).lower()
     status = row_value(row, 6)
@@ -153,7 +246,7 @@ def process_sheet_row(gmail, sheets, cards: str, row_index: int, row: list, own_
     if status in SKIP_STATUSES:
         return False, f"⏭️ 行{row_index} 状态为{status}，跳过：{target_email}"
 
-    last_processed = get_last_processed_internal_date(get_sheet_data(sheets, REPLIES_SHEET), row_index)
+    last_processed = 0 if force_rebuild else get_last_processed_internal_date(get_sheet_data(sheets, REPLIES_SHEET), row_index)
 
     try:
         thread_ids = collect_thread_ids_for_creator(gmail, target_email, date_query)
@@ -177,7 +270,7 @@ def process_sheet_row(gmail, sheets, cards: str, row_index: int, row: list, own_
         {f"{item['internal_date']}|{item['message_id']}": item for item in all_items}.values(),
         key=lambda item: item["internal_date"],
     )
-    new_items = [item for item in all_items if item["internal_date"] > last_processed]
+    new_items = all_items if force_rebuild else [item for item in all_items if item["internal_date"] > last_processed]
 
     if not new_items:
         update_cell(sheets, REPLIES_SHEET, row_index, 12, "没有 O 列之后的新邮件")
@@ -190,6 +283,10 @@ def process_sheet_row(gmail, sheets, cards: str, row_index: int, row: list, own_
             break
 
     existing_history = get_existing_history(sheets, row_index)
+    if force_rebuild:
+        update_cell(sheets, REPLIES_SHEET, row_index, 5, "")
+        existing_history = ""
+
     ai_reply_result, summary_by_internal_date = summarize_new_items(
         new_items,
         latest_influencer_item,
@@ -210,12 +307,14 @@ def process_sheet_row(gmail, sheets, cards: str, row_index: int, row: list, own_
     max_internal_date = max(item["internal_date"] for item in new_items)
 
     update_cell(sheets, REPLIES_SHEET, row_index, 1, latest_item["date_str"])
-    update_cell(sheets, REPLIES_SHEET, row_index, 4, latest_entry)
     if ai_reply_result and latest_influencer_item:
+        latest_influencer_entry = summary_by_internal_date[latest_influencer_item["internal_date"]]["entry"]
+        update_cell(sheets, REPLIES_SHEET, row_index, 4, latest_influencer_entry)
         update_cell(sheets, REPLIES_SHEET, row_index, 6, ai_reply_result["stage"])
         update_cell(sheets, REPLIES_SHEET, row_index, 7, status_for_stage(ai_reply_result["stage"]))
     update_cell(sheets, REPLIES_SHEET, row_index, 11, account_email)
-    update_cell(sheets, REPLIES_SHEET, row_index, 12, f"手动补充自动填充：新增 {len(new_items)} 封邮件")
+    note_prefix = "强制重建" if force_rebuild else "手动补充自动填充"
+    update_cell(sheets, REPLIES_SHEET, row_index, 12, f"{note_prefix}：处理 {len(new_items)} 封邮件")
     update_cell(sheets, REPLIES_SHEET, row_index, 13, latest_item["message_id"])
     update_cell(sheets, REPLIES_SHEET, row_index, 14, latest_item["subject"])
     update_cell(sheets, REPLIES_SHEET, row_index, 15, str(max_internal_date))
@@ -231,6 +330,8 @@ def main():
         print(f"  候选日期过滤：{date_query}")
     else:
         print("  候选日期过滤：不限日期，按 C 列邮箱搜索全部相关邮件")
+    force_rebuild = os.environ.get("BACKFILL_FORCE_REBUILD", "").strip() == "1"
+    print(f"  强制重建 E 列历史：{'是' if force_rebuild else '否'}")
 
     creds = get_creds()
     gmail = build("gmail", "v1", credentials=creds)
@@ -253,6 +354,7 @@ def main():
             row=row,
             own_emails=own_emails,
             date_query=date_query,
+            force_rebuild=force_rebuild,
         )
         if message != "空行":
             print(f"  {message}")
