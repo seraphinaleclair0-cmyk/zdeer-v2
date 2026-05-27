@@ -1,0 +1,43 @@
+name: 一次性补全历史达人回复
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "开始日期 YYYY-MM-DD；不填则只扫描今天"
+        required: false
+        default: ""
+      end_date:
+        description: "结束日期 YYYY-MM-DD；不填则只扫描今天"
+        required: false
+        default: ""
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: |
+          pip install \
+            google-auth \
+            google-auth-oauthlib \
+            google-auth-httplib2 \
+            google-api-python-client \
+            anthropic
+
+      - name: 补全指定日期范围内的达人回复
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          BACKFILL_START_DATE: ${{ inputs.start_date }}
+          BACKFILL_END_DATE: ${{ inputs.end_date }}
+        run: python backfill_replies.py
