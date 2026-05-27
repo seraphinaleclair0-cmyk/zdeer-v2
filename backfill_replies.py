@@ -23,8 +23,7 @@ import time
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 
-from google import genai
-from google.genai import types
+import anthropic
 import config
 from googleapiclient.discovery import build
 
@@ -39,29 +38,28 @@ from google_auth import get_creds
 
 STATUS_OPTIONS = ["待回复", "已回复", "已放弃", "无需回复"]
 
-GEMINI_API_KEY = getattr(config, "GEMINI_API_KEY", "") or os.environ.get("GEMINI_API_KEY", "")
-# 免费额度建议优先用 Flash-Lite；如果效果不够，再把环境变量 GEMINI_MODEL 改成 gemini-2.5-flash。
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+ANTHROPIC_API_KEY = getattr(config, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5")
 
 
-def gemini_generate_text(prompt: str, max_tokens: int = 800, json_mode: bool = False) -> str:
-    if not GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY is empty. Please add it to GitHub Secrets and config.py/env.")
+def claude_generate_text(prompt: str, max_tokens: int = 800, json_mode: bool = False) -> str:
+    if not ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY is empty. Please add it to GitHub Secrets and config.py/env.")
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    cfg = {
-        "temperature": 0.1,
-        "max_output_tokens": max_tokens,
-    }
     if json_mode:
-        cfg["response_mime_type"] = "application/json"
+        prompt = f"{prompt}\n\nReturn only valid JSON. Do not wrap it in markdown fences."
 
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(**cfg),
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    message = client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=max_tokens,
+        temperature=0.1,
+        messages=[{"role": "user", "content": prompt}],
     )
-    return (response.text or "").strip()
+    return "".join(
+        block.text for block in message.content
+        if getattr(block, "type", "") == "text" and getattr(block, "text", "")
+    ).strip()
 
 
 
@@ -416,7 +414,7 @@ Eloise
 {cards}
 """
     try:
-        text = gemini_generate_text(prompt, max_tokens=1000, json_mode=True)
+        text = claude_generate_text(prompt, max_tokens=1000, json_mode=True)
         text = re.sub(r"```json|```", "", text).strip()
         result = json.loads(text)
         return {
@@ -425,7 +423,7 @@ Eloise
             "suggested_reply": "",
         }
     except Exception as e:
-        print(f"  ⚠️ Gemini解析失败：{e}")
+        print(f"  ⚠️ Claude解析失败：{e}")
         return {"summary": "AI解析失败，请手动查看", "stage": "其他", "suggested_reply": ""}
 
 
@@ -439,9 +437,9 @@ def ai_summarize_history_message(body: str) -> str:
 {body[:1000]}
 """
     try:
-        return gemini_generate_text(prompt, max_tokens=300, json_mode=False)
+        return claude_generate_text(prompt, max_tokens=300, json_mode=False)
     except Exception as e:
-        print(f"  ⚠️ Gemini摘要失败：{e}")
+        print(f"  ⚠️ Claude摘要失败：{e}")
         return "（摘要生成失败）"
 
 
