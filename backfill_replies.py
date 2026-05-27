@@ -23,11 +23,12 @@ import time
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 
-import anthropic
+from google import genai
+from google.genai import types
+import config
 from googleapiclient.discovery import build
 
 from config import (
-    ANTHROPIC_API_KEY,
     EMAIL_ACCOUNTS,
     NEGOTIATION_CARDS,
     OUTBOX_SHEET,
@@ -37,6 +38,31 @@ from config import (
 from google_auth import get_creds
 
 STATUS_OPTIONS = ["待回复", "已回复", "已放弃", "无需回复"]
+
+GEMINI_API_KEY = getattr(config, "GEMINI_API_KEY", "") or os.environ.get("GEMINI_API_KEY", "")
+# 免费额度建议优先用 Flash-Lite；如果效果不够，再把环境变量 GEMINI_MODEL 改成 gemini-2.5-flash。
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+
+
+def gemini_generate_text(prompt: str, max_tokens: int = 800, json_mode: bool = False) -> str:
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is empty. Please add it to GitHub Secrets and config.py/env.")
+
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    cfg = {
+        "temperature": 0.1,
+        "max_output_tokens": max_tokens,
+    }
+    if json_mode:
+        cfg["response_mime_type"] = "application/json"
+
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(**cfg),
+    )
+    return (response.text or "").strip()
+
 
 
 def parse_input_date(value: str, fallback: str) -> datetime:
@@ -292,8 +318,7 @@ def load_negotiation_cards() -> str:
 
 
 def ai_process_reply(reply_body: str, history: str, cards: str) -> dict:
-    time.sleep(2)
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    time.sleep(1)
     prompt = f"""你是一个有经验的 TikTok 红人营销 BD，正在代表品牌与达人沟通合作。
 以下是达人发来的回复邮件，请完成三件事。
 
@@ -390,22 +415,22 @@ Eloise
 可用筹码库：
 {cards}
 """
-    message = client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=1000,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    text = message.content[0].text.strip()
-    text = re.sub(r"```json|```", "", text).strip()
     try:
-        return json.loads(text)
-    except Exception:
+        text = gemini_generate_text(prompt, max_tokens=1000, json_mode=True)
+        text = re.sub(r"```json|```", "", text).strip()
+        result = json.loads(text)
+        return {
+            "summary": str(result.get("summary", "")).strip() or "AI解析失败，请手动查看",
+            "stage": str(result.get("stage", "其他")).strip() or "其他",
+            "suggested_reply": "",
+        }
+    except Exception as e:
+        print(f"  ⚠️ Gemini解析失败：{e}")
         return {"summary": "AI解析失败，请手动查看", "stage": "其他", "suggested_reply": ""}
 
 
 def ai_summarize_history_message(body: str) -> str:
-    time.sleep(2)
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    time.sleep(1)
     prompt = f"""请用1句中文简洁总结以下邮件的核心内容，供内部沟通历史记录使用。
 格式要求：直接写重点，不加任何前缀，不超过1句话。
 不要写「达人：」「我方：」等角色前缀。
@@ -414,13 +439,9 @@ def ai_summarize_history_message(body: str) -> str:
 {body[:1000]}
 """
     try:
-        message = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=300,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return message.content[0].text.strip()
-    except Exception:
+        return gemini_generate_text(prompt, max_tokens=300, json_mode=False)
+    except Exception as e:
+        print(f"  ⚠️ Gemini摘要失败：{e}")
         return "（摘要生成失败）"
 
 
