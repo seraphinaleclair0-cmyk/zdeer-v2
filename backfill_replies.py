@@ -1,11 +1,11 @@
 """
 backfill_replies.py — 一次性脚本
 
-把 2026-05-21 至今、沟通管理里没有记录的达人回复补进来。
+默认只扫描今天的达人回复；也可以通过环境变量指定日期范围。
 
 规则：
-- 沟通管理里已有这个达人的行：跳过，不更新、不覆盖
-- 沟通管理里没有这个达人的行：从 Gmail 抓 2026-05-21 至今的邮件，新建一行
+- 沟通管理里已有这个达人的行：更新 A/D/F/G/M/N，B/C 不动，E 只追加不覆盖
+- 沟通管理里没有这个达人的行：从 Gmail 抓指定日期范围内的邮件，新建一行
 - 跑完可以删掉这个文件，不影响主流程
 """
 
@@ -14,7 +14,7 @@ import json
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 
 import anthropic
@@ -30,9 +30,29 @@ from config import (
 )
 from google_auth import get_creds
 
-START_QUERY_DATE = "2026/05/20"  # Gmail after: is used to include 2026-05-21.
-START_LABEL = "2026-05-21"
 STATUS_OPTIONS = ["待回复", "已回复", "已放弃", "无需回复"]
+
+
+def parse_input_date(value: str, fallback: str) -> datetime:
+    value = (value or "").strip() or fallback
+    return datetime.strptime(value, "%Y-%m-%d")
+
+
+def get_date_range() -> tuple[datetime, datetime]:
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    start = parse_input_date(os.environ.get("BACKFILL_START_DATE", ""), today.strftime("%Y-%m-%d"))
+    end = parse_input_date(os.environ.get("BACKFILL_END_DATE", ""), today.strftime("%Y-%m-%d"))
+    if end < start:
+        raise SystemExit("BACKFILL_END_DATE cannot be earlier than BACKFILL_START_DATE")
+    return start, end
+
+
+def build_gmail_date_query(start: datetime, end: datetime) -> str:
+    # Gmail after/before dates are easiest to use as an inclusive local date range
+    # by expanding to the previous and next day.
+    after_date = (start - timedelta(days=1)).strftime("%Y/%m/%d")
+    before_date = (end + timedelta(days=1)).strftime("%Y/%m/%d")
+    return f"after:{after_date} before:{before_date}"
 
 
 def get_sheet_data(sheets, sheet_name: str) -> list:
@@ -61,6 +81,28 @@ def update_cell(sheets, sheet_name: str, row: int, col: int, value: str):
         valueInputOption="RAW",
         body={"values": [[value]]},
     ).execute()
+
+
+def append_to_history(sheets, row_index: int, new_entry: str):
+    """Append to E column without replacing existing manual history."""
+    result = sheets.spreadsheets().values().get(
+        spreadsheetId=SHEET_ID,
+        range=f"{REPLIES_SHEET}!E{row_index}",
+    ).execute()
+    existing = ""
+    values = result.get("values", [])
+    if values and values[0]:
+        existing = values[0][0].strip()
+    if new_entry and new_entry in existing:
+        return
+    updated = f"{existing}\n{new_entry}" if existing else new_entry
+    update_cell(sheets, REPLIES_SHEET, row_index, 5, updated)
+
+
+def status_for_stage(stage: str) -> str:
+    if stage == "已成交":
+        return "已回复"
+    return "待回复"
 
 
 def get_sheet_id(sheets, sheet_name: str):
@@ -461,8 +503,10 @@ def latest_inbound_by_sender(gmail, messages: list, own_emails: set[str]) -> tup
 
 def main():
     print(f"\n🔁 开始补全历史回复 — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"  范围：{START_LABEL} 至今")
-    print("  规则：沟通管理已有邮箱则修复D/E，没有则新增")
+    start_date, end_date = get_date_range()
+    date_query = build_gmail_date_query(start_date, end_date)
+    print(f"  范围：{start_date.strftime('%Y-%m-%d')} 至 {end_date.strftime('%Y-%m-%d')}")
+    print("  规则：已有达人更新 A/D/F/G/M/N、E追加；B/C不动；没有则新增")
 
     creds = get_creds()
     gmail = build("gmail", "v1", credentials=creds)
@@ -483,7 +527,7 @@ def main():
     skipped_empty = 0
 
     for account in EMAIL_ACCOUNTS:
-        query = f"in:inbox to:{account['email']} after:{START_QUERY_DATE}"
+        query = f"in:inbox to:{account['email']} {date_query}"
         print(f"\n📥 扫描 {account['email']}...")
 
         try:
@@ -519,23 +563,16 @@ def main():
                 ai_result = {"summary": "AI处理失败", "stage": "其他", "suggested_reply": ""}
 
             summary_entry = f"{date_str} 达人：{ai_result['summary']}"
-            thread_history = build_thread_history(
-                gmail,
-                msg.get("threadId", ""),
-                own_emails,
-                from_email,
-                headers.get("Message-ID", ""),
-                ai_result["summary"],
-                date_str,
-            )
 
             if existing_row:
                 repaired_existing += 1
                 seen_emails.add(from_email)
-                print(f"  🔧 修复已有记录 D/E：{from_email}")
+                print(f"  🔧 更新已有记录：{from_email}")
                 update_cell(sheets, REPLIES_SHEET, existing_row, 1, date_str)
                 update_cell(sheets, REPLIES_SHEET, existing_row, 4, summary_entry)
-                update_cell(sheets, REPLIES_SHEET, existing_row, 5, thread_history)
+                append_to_history(sheets, existing_row, summary_entry)
+                update_cell(sheets, REPLIES_SHEET, existing_row, 6, ai_result["stage"])
+                update_cell(sheets, REPLIES_SHEET, existing_row, 7, status_for_stage(ai_result["stage"]))
                 update_cell(sheets, REPLIES_SHEET, existing_row, 13, headers.get("Message-ID", ""))
                 update_cell(sheets, REPLIES_SHEET, existing_row, 14, headers.get("Subject", ""))
                 time.sleep(2)
@@ -553,9 +590,9 @@ def main():
                 name,
                 from_email,
                 summary_entry,
-                thread_history,
+                summary_entry,
                 ai_result["stage"],
-                "待回复",
+                status_for_stage(ai_result["stage"]),
                 "",
                 "",
                 "",
