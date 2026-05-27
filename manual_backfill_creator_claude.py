@@ -319,6 +319,34 @@ def list_all_messages(gmail, query: str) -> list:
     return messages
 
 
+def build_gmail_for_account(account: dict, account_index: int, default_creds):
+    token_env_var = f"GOOGLE_TOKEN_JSON_{account_index}"
+    if os.environ.get(token_env_var, "").strip():
+        creds = get_creds(token_env_var=token_env_var)
+        token_source = token_env_var
+    else:
+        creds = default_creds
+        token_source = "GOOGLE_TOKEN_JSON"
+
+    gmail = build("gmail", "v1", credentials=creds)
+    configured_email = account["email"].lower()
+    try:
+        profile_email = gmail.users().getProfile(userId="me").execute().get("emailAddress", "").lower()
+    except Exception as e:
+        print(f"  ⚠️ 无法读取 Gmail 登录账号：{configured_email} / {e}")
+        profile_email = ""
+
+    if profile_email and profile_email != configured_email:
+        print(
+            f"  ⚠️ {configured_email} 使用的是 {token_source}，"
+            f"Gmail API 实际登录账号为 {profile_email}；如果它不是别名/转发邮箱，需要配置 {token_env_var}"
+        )
+    else:
+        print(f"  Gmail token：{configured_email} <- {token_source}")
+
+    return gmail
+
+
 def message_sent_to_target(headers: dict, target_email: str) -> bool:
     recipients = set()
     for header_name in ("To", "Cc", "Bcc", "Delivered-To"):
@@ -384,6 +412,23 @@ def collect_all_items_for_creator(gmail, own_emails: set[str], target_email: str
         key = item.get("message_id") or f"{item['internal_date']}-{item['speaker']}-{item['subject']}"
         dedup[key] = item
 
+    return sorted(dedup.values(), key=lambda x: x["internal_date"])
+
+
+def collect_all_items_for_creator_across_accounts(gmail_accounts: list, own_emails: set[str], target_email: str) -> list[dict]:
+    all_items = []
+    for account, gmail in gmail_accounts:
+        try:
+            account_items = collect_all_items_for_creator(gmail, own_emails, target_email)
+            print(f"  {account['email']} 找到 {len(account_items)} 条相关邮件")
+            all_items.extend(account_items)
+        except Exception as e:
+            print(f"  ⚠️ 扫描 {account['email']} 失败：{e}")
+
+    dedup = {}
+    for item in all_items:
+        key = item.get("message_id") or f"{item['internal_date']}-{item['speaker']}-{item['subject']}"
+        dedup[key] = item
     return sorted(dedup.values(), key=lambda x: x["internal_date"])
 
 
@@ -486,9 +531,12 @@ def main():
     print("  规则：B/C由你填写；脚本补 A/D/E/F/G/K/L/M/N/O；只有达人有回复才补。")
 
     creds = get_creds()
-    gmail = build("gmail", "v1", credentials=creds)
     sheets = build("sheets", "v4", credentials=creds)
     own_emails = {acc["email"].lower() for acc in EMAIL_ACCOUNTS}
+    gmail_accounts = [
+        (account, build_gmail_for_account(account, account_index, creds))
+        for account_index, account in enumerate(EMAIL_ACCOUNTS, start=1)
+    ]
 
     ensure_status_dropdown(sheets)
     data = get_sheet_data(sheets, REPLIES_SHEET)
@@ -517,7 +565,7 @@ def main():
             continue
 
         try:
-            items = collect_all_items_for_creator(gmail, own_emails, target_email)
+            items = collect_all_items_for_creator_across_accounts(gmail_accounts, own_emails, target_email)
             influencer_count = sum(1 for x in items if x["speaker"] == "达人")
             if not items:
                 update_cell(sheets, REPLIES_SHEET, row_index, 12, "手动补充跳过：Gmail未找到相关邮件")
