@@ -151,8 +151,6 @@ def append_to_history(sheets, row_index: int, new_entry: str):
 
 
 def status_for_stage(stage: str) -> str:
-    if stage == "已成交":
-        return "已回复"
     return "待回复"
 
 
