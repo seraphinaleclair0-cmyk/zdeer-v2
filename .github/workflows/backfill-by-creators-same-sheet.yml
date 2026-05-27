@@ -1,0 +1,43 @@
+name: 手动补充达人自动填充邮件
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "开始日期 YYYY-MM-DD；不填则按邮箱搜索全部相关邮件"
+        required: false
+        default: ""
+      end_date:
+        description: "结束日期 YYYY-MM-DD；不填则按邮箱搜索全部相关邮件"
+        required: false
+        default: ""
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: |
+          pip install \
+            google-auth \
+            google-auth-oauthlib \
+            google-auth-httplib2 \
+            google-api-python-client \
+            google-genai
+
+      - name: 按沟通管理 B/C 列自动填充邮件
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          BACKFILL_START_DATE: ${{ inputs.start_date }}
+          BACKFILL_END_DATE: ${{ inputs.end_date }}
+        run: python backfill_by_creators_same_sheet_gemini.py
