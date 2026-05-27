@@ -1,0 +1,48 @@
+name: 手动按邮箱补全沟通管理-Claude
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_email:
+        description: "只补某个达人邮箱；不填则处理沟通管理表里所有未补完整的邮箱"
+        required: false
+        default: ""
+      force_rebuild:
+        description: "是否强制重建已有D/E/M/N/O内容：填 1 表示强制"
+        required: false
+        default: ""
+      claude_model:
+        description: "Claude模型；默认 claude-haiku-4-5"
+        required: false
+        default: "claude-haiku-4-5"
+
+jobs:
+  manual-backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: |
+          pip install \
+            anthropic \
+            google-auth \
+            google-auth-oauthlib \
+            google-auth-httplib2 \
+            google-api-python-client
+
+      - name: 按邮箱补全沟通管理
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          TARGET_EMAIL: ${{ inputs.target_email }}
+          BACKFILL_FORCE_REBUILD: ${{ inputs.force_rebuild }}
+          CLAUDE_MODEL: ${{ inputs.claude_model }}
+        run: python manual_backfill_creator_claude.py
