@@ -78,7 +78,7 @@ def parse_input_date(value: str, fallback: str) -> datetime:
 def get_date_range() -> tuple[datetime, datetime]:
     """
     Gmail after/before 只能按日期过滤，不按小时过滤。
-    为避免跨天/时区漏抓，默认扫描最近 2 天作为候选范围；
+    为避免跨天/时区漏抓，默认扫描最近 3 个自然日作为候选范围（今天 + 前 2 天）；
     真正是否处理，后面用 O 列 internalDate 精确判断。
     """
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)

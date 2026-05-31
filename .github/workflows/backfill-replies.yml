@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       start_date:
-        description: "开始日期 YYYY-MM-DD；不填则只扫描今天"
+        description: "开始日期 YYYY-MM-DD；不填则默认扫描最近3天"
         required: false
         default: ""
       end_date:
-        description: "结束日期 YYYY-MM-DD；不填则只扫描今天"
+        description: "结束日期 YYYY-MM-DD；不填则默认到今天"
         required: false
         default: ""
 
