@@ -36,9 +36,11 @@ from template import (
 )
 
 MAX_OUTREACH_PER_RUN = int(os.environ.get("MAX_OUTREACH_PER_RUN", "0"))
+MAX_FOLLOWUPS_PER_RUN = int(os.environ.get("MAX_FOLLOWUPS_PER_RUN", "0"))
 MAX_CONSECUTIVE_FAILURES_PER_ACCOUNT = int(
     os.environ.get("MAX_CONSECUTIVE_FAILURES_PER_ACCOUNT", "3")
 )
+EMAIL_RE = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
 
 def is_daily_limit_error(error: str) -> bool:
     error_lower = error.lower()
@@ -74,6 +76,16 @@ def get_account_by_email(email: str) -> dict:
         if acc["email"].lower() == email.lower():
             return acc
     return EMAIL_ACCOUNTS[0]
+
+
+def normalize_recipient(raw_email: str) -> tuple[str, str]:
+    candidates = [part.strip() for part in re.split(r"[,;]", raw_email) if part.strip()]
+    for candidate in candidates:
+        if EMAIL_RE.match(candidate):
+            if candidate != raw_email.strip():
+                return candidate, f"邮箱包含多个值，使用第一个合法邮箱：{candidate}"
+            return candidate, ""
+    return "", f"邮箱格式无效：{raw_email[:80]}"
 
 
 def send_email(account: dict, to_email: str, subject: str, body: str) -> tuple[bool, str]:
@@ -141,6 +153,15 @@ def main():
             update_cell(sheets, OUTBOX_SHEET, i, 6, "未发送：发件账号今日额度已满")
             continue
 
+        normalized_email, email_warning = normalize_recipient(to_email)
+        if not normalized_email:
+            print(f"  ⚠️ 第{i}行 {email_warning}")
+            update_cell(sheets, OUTBOX_SHEET, i, 6, email_warning)
+            continue
+        if email_warning:
+            print(f"  ⚠️ 第{i}行 {email_warning}")
+        to_email = normalized_email
+
         subject = get_outreach_subject(name)
         body    = get_outreach_body(name, tiktok_url)
 
@@ -190,6 +211,10 @@ def main():
         sent_time    = row[6].strip() if len(row) > 6 else ""
         followup     = int(row[7].strip()) if len(row) > 7 and row[7].strip().isdigit() else 0
 
+        if MAX_FOLLOWUPS_PER_RUN > 0 and followup_count >= MAX_FOLLOWUPS_PER_RUN:
+            print(f"  已达到本次跟进邮件上限 {MAX_FOLLOWUPS_PER_RUN}，剩余下次继续")
+            break
+
         # 条件：已发送 + 未回复 + 跟进次数 < 3 + 发出超过24小时
         if not (
             status == "已发送"
@@ -205,6 +230,14 @@ def main():
                 continue
         except Exception:
             continue
+
+        normalized_email, email_warning = normalize_recipient(to_email)
+        if not normalized_email:
+            print(f"  ⚠️ 第{i}行 {email_warning}")
+            continue
+        if email_warning:
+            print(f"  ⚠️ 第{i}行 {email_warning}")
+        to_email = normalized_email
 
         account = get_account_by_email(sender_email) if sender_email else EMAIL_ACCOUNTS[0]
         subject = get_followup_subject(name)
