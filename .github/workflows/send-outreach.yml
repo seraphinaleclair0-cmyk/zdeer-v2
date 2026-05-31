@@ -1,9 +1,9 @@
-name: 定时发开发信和跟进（夜间批次）
+name: 发开发信（8点/22点）
 on:
   schedule:
-    # 每天北京时间 00:00 / 02:00 / 04:00 / 06:00 / 08:00
-    # 对应 UTC 16:00 / 18:00 / 20:00 / 22:00 / 00:00
-    - cron: "0 0,16,18,20,22 * * *"
+    # 每天北京时间 08:00 / 22:00
+    # 对应 UTC 00:00 / 14:00
+    - cron: "0 0,14 * * *"
   workflow_dispatch:
     inputs:
       source:
@@ -19,7 +19,7 @@ on:
 jobs:
   send:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 360
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
@@ -43,7 +43,5 @@ jobs:
           GMAIL_PASS_2:      ${{ secrets.GMAIL_PASS_2 }}
           GMAIL_PASS_3:      ${{ secrets.GMAIL_PASS_3 }}
           GMAIL_PASS_4:      ${{ secrets.GMAIL_PASS_4 }}
-          MAX_OUTREACH_PER_RUN: "50"
-          MAX_FOLLOWUPS_PER_RUN: "50"
           MAX_CONSECUTIVE_FAILURES_PER_ACCOUNT: "3"
         run: python send_outreach.py
