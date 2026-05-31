@@ -539,6 +539,7 @@ def get_first_working_creds():
 
     for token_env_var in token_env_vars:
         if not os.environ.get(token_env_var, "").strip():
+            print(f"  ℹ️ {token_env_var} 未配置")
             continue
         try:
             return get_creds(token_env_var=token_env_var), token_env_var

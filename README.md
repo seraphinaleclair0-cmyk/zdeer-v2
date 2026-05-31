@@ -65,6 +65,14 @@
 | GEMINI_API_KEY | 你的 Gemini API Key |
 | GOOGLE_TOKEN_JSON | token.json 文件的完整内容 |
 
+如果「一次性补全历史达人回复」报错 `invalid_grant: Token has been expired or revoked`，说明 Google OAuth token 失效了，需要重新生成：
+
+```bash
+python generate_google_token.py
+```
+
+浏览器授权完成后，把终端里打印的整行 JSON 更新到 GitHub Secret `GOOGLE_TOKEN_JSON`。
+
 ### 第二步：推送代码到 GitHub
 ```bash
 cd zdeer-v2
