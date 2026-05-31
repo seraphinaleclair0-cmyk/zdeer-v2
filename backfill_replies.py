@@ -23,7 +23,6 @@ import time
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 
-import anthropic
 import config
 from googleapiclient.discovery import build
 
@@ -45,6 +44,14 @@ CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5")
 def claude_generate_text(prompt: str, max_tokens: int = 800, json_mode: bool = False) -> str:
     if not ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY is empty. Please add it to GitHub Secrets and config.py/env.")
+
+    try:
+        import anthropic
+    except ImportError as exc:
+        raise RuntimeError(
+            "Missing dependency: anthropic. Install it with `pip install anthropic`, "
+            "or run the GitHub Action that installs dependencies first."
+        ) from exc
 
     if json_mode:
         prompt = f"{prompt}\n\nReturn only valid JSON. Do not wrap it in markdown fences."
@@ -525,14 +532,43 @@ def read_message(gmail, msg_id: str) -> dict:
     ).execute()
 
 
+def get_first_working_creds():
+    """Return the first Google token that can refresh successfully."""
+    token_env_vars = ["GOOGLE_TOKEN_JSON", *[f"GOOGLE_TOKEN_JSON_{i}" for i in range(1, len(EMAIL_ACCOUNTS) + 1)]]
+    failures = []
+
+    for token_env_var in token_env_vars:
+        if not os.environ.get(token_env_var, "").strip():
+            continue
+        try:
+            return get_creds(token_env_var=token_env_var), token_env_var
+        except Exception as e:
+            failures.append(f"{token_env_var}: {e}")
+            print(f"  ⚠️ {token_env_var} 不可用，尝试下一个 token：{e}")
+
+    if failures:
+        raise RuntimeError(
+            "没有可用的 Google token。请重新生成并更新 GitHub Secrets 中的 "
+            "GOOGLE_TOKEN_JSON / GOOGLE_TOKEN_JSON_1~4。\n"
+            + "\n".join(failures)
+        )
+
+    return get_creds(), "local token.json/credentials.json"
+
+
 def build_gmail_for_account(account: dict, account_index: int, default_creds):
     token_env_var = f"GOOGLE_TOKEN_JSON_{account_index}"
     if os.environ.get(token_env_var, "").strip():
-        creds = get_creds(token_env_var=token_env_var)
-        token_source = token_env_var
+        try:
+            creds = get_creds(token_env_var=token_env_var)
+            token_source = token_env_var
+        except Exception as e:
+            print(f"  ⚠️ {token_env_var} 不可用，改用默认可用 token：{e}")
+            creds = default_creds
+            token_source = "fallback token"
     else:
         creds = default_creds
-        token_source = "GOOGLE_TOKEN_JSON"
+        token_source = "default token"
 
     gmail = build("gmail", "v1", credentials=creds)
     configured_email = account["email"].lower()
@@ -715,7 +751,8 @@ def main():
     print(f"  候选范围：{start_date.strftime('%Y-%m-%d')} 至 {end_date.strftime('%Y-%m-%d')}")
     print("  规则：G=已放弃整行跳过；O列控制增量处理；thread补全我方/达人历史")
 
-    creds = get_creds()
+    creds, creds_source = get_first_working_creds()
+    print(f"  Google token：使用 {creds_source}")
     sheets = build("sheets", "v4", credentials=creds)
     cards = load_negotiation_cards()
 
