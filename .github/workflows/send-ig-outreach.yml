@@ -1,0 +1,45 @@
+name: IG开发信（8点/22点）
+on:
+  schedule:
+    # 每天北京时间 08:00 / 22:00
+    # 对应 UTC 00:00 / 14:00
+    - cron: "0 0,14 * * *"
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Trigger source"
+        required: false
+        default: "manual_ig"
+      email:
+        description: "Target email"
+        required: false
+      creator:
+        description: "Instagram creator name"
+        required: false
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 安装依赖
+        run: |
+          pip install \
+            google-auth \
+            google-auth-oauthlib \
+            google-auth-httplib2 \
+            google-api-python-client
+      - name: 发 IG 开发信和跟进信
+        env:
+          GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
+          GMAIL_PASS_1:      ${{ secrets.GMAIL_PASS_1 }}
+          GMAIL_PASS_2:      ${{ secrets.GMAIL_PASS_2 }}
+          GMAIL_PASS_3:      ${{ secrets.GMAIL_PASS_3 }}
+          GMAIL_PASS_4:      ${{ secrets.GMAIL_PASS_4 }}
+          MAX_CONSECUTIVE_FAILURES_PER_ACCOUNT: "3"
+        run: python send_ig_outreach.py
