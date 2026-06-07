@@ -2,6 +2,7 @@ import json
 import os
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google.oauth2 import service_account
 from google_auth_oauthlib.flow import InstalledAppFlow
 
 SCOPES = [
@@ -9,7 +10,19 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
 ]
 
-def get_creds(token_json="token.json", credentials_json="credentials.json", token_env_var="GOOGLE_TOKEN_JSON") -> Credentials:
+def get_creds(
+    token_json="token.json",
+    credentials_json="credentials.json",
+    token_env_var="GOOGLE_TOKEN_JSON",
+    service_account_env_var="GOOGLE_SERVICE_ACCOUNT_JSON",
+) -> Credentials:
+    service_account_env = os.environ.get(service_account_env_var)
+    if service_account_env:
+        return service_account.Credentials.from_service_account_info(
+            json.loads(service_account_env),
+            scopes=SCOPES,
+        )
+
     creds = None
     token_env = os.environ.get(token_env_var)
     if token_env:

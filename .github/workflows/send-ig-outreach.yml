@@ -36,6 +36,7 @@ jobs:
             google-api-python-client
       - name: 发 IG 开发信和跟进信
         env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
           GMAIL_PASS_1:      ${{ secrets.GMAIL_PASS_1 }}
           GMAIL_PASS_2:      ${{ secrets.GMAIL_PASS_2 }}
