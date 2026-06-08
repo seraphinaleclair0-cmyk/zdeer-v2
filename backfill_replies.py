@@ -270,6 +270,7 @@ def mark_outbox_replied(sheets, outbox_data: list, email: str) -> tuple[int, str
 def decode_body_data(data: str) -> str:
     if not data:
         return ""
+    data += "=" * (-len(data) % 4)
     return base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
 
 
