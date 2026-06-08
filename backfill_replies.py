@@ -33,6 +33,7 @@ from config import (
     REPLIES_SHEET,
     SHEET_ID,
 )
+from gmail_imap import ImapGmailClient
 from google_auth import get_creds
 
 STATUS_OPTIONS = ["待回复", "已回复", "已放弃", "无需回复"]
@@ -249,8 +250,21 @@ def find_in_outbox(outbox_data: list, email: str) -> tuple[int, dict]:
             return i, {
                 "name": row[0].strip() if len(row) > 0 else "",
                 "email": row[1].strip(),
+                "status": row[5].strip() if len(row) > 5 else "",
             }
     return 0, {}
+
+
+def mark_outbox_replied(sheets, outbox_data: list, email: str) -> tuple[int, str]:
+    outbox_row_i, outbox_info = find_in_outbox(outbox_data, email)
+    if not outbox_row_i:
+        return 0, ""
+
+    name = outbox_info.get("name", "")
+    if outbox_info.get("status") != "已回复":
+        update_cell(sheets, OUTBOX_SHEET, outbox_row_i, 6, "已回复")
+
+    return outbox_row_i, name
 
 
 def decode_body_data(data: str) -> str:
@@ -558,6 +572,10 @@ def get_first_working_creds():
 
 
 def build_gmail_for_account(account: dict, account_index: int, default_creds):
+    if account.get("password"):
+        print(f"  Gmail IMAP：{account['email']} <- GMAIL_PASS_{account_index}")
+        return ImapGmailClient(account["email"], account["password"]), account["email"].lower()
+
     token_env_var = f"GOOGLE_TOKEN_JSON_{account_index}"
     if os.environ.get(token_env_var, "").strip():
         try:
@@ -581,9 +599,10 @@ def build_gmail_for_account(account: dict, account_index: int, default_creds):
 
     if profile_email and profile_email != configured_email:
         print(
-            f"  ⚠️ {configured_email} 使用的是 {token_source}，"
-            f"Gmail API 实际登录账号为 {profile_email}；如果它不是别名/转发邮箱，需要配置 {token_env_var}"
+            f"  ⚠️ 跳过 {configured_email}：使用的是 {token_source}，"
+            f"Gmail API 实际登录账号为 {profile_email}。请为该邮箱配置 {token_env_var}"
         )
+        return None, profile_email
     else:
         print(f"  Gmail token：{configured_email} <- {token_source}")
 
@@ -706,17 +725,15 @@ def process_thread_for_target(
         update_cell(sheets, REPLIES_SHEET, existing_row, 13, latest_item["message_id"])
         update_cell(sheets, REPLIES_SHEET, existing_row, 14, latest_item["subject"])
         update_cell(sheets, REPLIES_SHEET, existing_row, 15, str(max_internal_date))
+        if latest_influencer_item:
+            mark_outbox_replied(sheets, outbox_data, target_email)
         return True, f"🔧 已更新：{target_email}，新增 {len(new_items)} 条历史"
 
     # 没有已有行时，必须由达人回复触发，且 thread 里确实有达人邮件，才新建。
     if not allow_create or not latest_influencer_item:
         return False, f"⏭️ 没有达人回复触发，不新建：{target_email}"
 
-    outbox_row_i, outbox_info = find_in_outbox(outbox_data, target_email)
-    name = outbox_info.get("name", "")
-
-    if outbox_row_i:
-        update_cell(sheets, OUTBOX_SHEET, outbox_row_i, 6, "已回复")
+    _, name = mark_outbox_replied(sheets, outbox_data, target_email)
 
     history_entries = [
         summary_by_internal_date[item["internal_date"]]["entry"]
@@ -770,6 +787,8 @@ def main():
     # 1) inbox 中的达人回复作为新建/更新触发源
     for account_index, account in enumerate(EMAIL_ACCOUNTS, start=1):
         gmail, _profile_email = build_gmail_for_account(account, account_index, creds)
+        if gmail is None:
+            continue
         query = f"in:inbox to:{account['email']} {date_query}"
         print(f"\n📥 扫描 inbox：{account['email']}...")
 
@@ -837,6 +856,8 @@ def main():
 
     for account_index, account in enumerate(EMAIL_ACCOUNTS, start=1):
         gmail, profile_email = build_gmail_for_account(account, account_index, creds)
+        if gmail is None:
+            continue
         try:
             sent_messages = list_all_messages(gmail, f"in:sent {date_query}")
         except Exception as e:
