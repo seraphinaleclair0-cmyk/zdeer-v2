@@ -15,8 +15,9 @@ def get_creds(
     credentials_json="credentials.json",
     token_env_var="GOOGLE_TOKEN_JSON",
     service_account_env_var="GOOGLE_SERVICE_ACCOUNT_JSON",
+    allow_service_account=True,
 ) -> Credentials:
-    service_account_env = os.environ.get(service_account_env_var)
+    service_account_env = os.environ.get(service_account_env_var) if allow_service_account else None
     if service_account_env:
         return service_account.Credentials.from_service_account_info(
             json.loads(service_account_env),

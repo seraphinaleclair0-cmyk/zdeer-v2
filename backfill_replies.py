@@ -547,8 +547,8 @@ def read_message(gmail, msg_id: str) -> dict:
     ).execute()
 
 
-def get_first_working_creds():
-    """Return the first Google token that can refresh successfully."""
+def get_first_working_gmail_creds():
+    """Return the first OAuth token that can read Gmail, never a service account."""
     token_env_vars = ["GOOGLE_TOKEN_JSON", *[f"GOOGLE_TOKEN_JSON_{i}" for i in range(1, len(EMAIL_ACCOUNTS) + 1)]]
     failures = []
 
@@ -557,19 +557,24 @@ def get_first_working_creds():
             print(f"  ℹ️ {token_env_var} 未配置")
             continue
         try:
-            return get_creds(token_env_var=token_env_var), token_env_var
+            return get_creds(token_env_var=token_env_var, allow_service_account=False), token_env_var
         except Exception as e:
             failures.append(f"{token_env_var}: {e}")
             print(f"  ⚠️ {token_env_var} 不可用，尝试下一个 token：{e}")
 
-    if failures:
-        raise RuntimeError(
-            "没有可用的 Google token。请重新生成并更新 GitHub Secrets 中的 "
-            "GOOGLE_TOKEN_JSON / GOOGLE_TOKEN_JSON_1~4。\n"
-            + "\n".join(failures)
-        )
+    if os.path.exists("token.json") or os.path.exists("credentials.json"):
+        try:
+            return get_creds(allow_service_account=False), "local token.json/credentials.json"
+        except Exception as e:
+            failures.append(f"local token.json/credentials.json: {e}")
 
-    return get_creds(), "local token.json/credentials.json"
+    if failures:
+        print(
+            "  ⚠️ 没有可用的 Gmail OAuth 兜底 token。"
+            "如未配置 GMAIL_PASS_N，每个邮箱都需要 GOOGLE_TOKEN_JSON_N。\n"
+            + "\n".join(f"    - {failure}" for failure in failures)
+        )
+    return None, "no Gmail OAuth fallback"
 
 
 def build_gmail_for_account(account: dict, account_index: int, default_creds):
@@ -580,15 +585,21 @@ def build_gmail_for_account(account: dict, account_index: int, default_creds):
     token_env_var = f"GOOGLE_TOKEN_JSON_{account_index}"
     if os.environ.get(token_env_var, "").strip():
         try:
-            creds = get_creds(token_env_var=token_env_var)
+            creds = get_creds(token_env_var=token_env_var, allow_service_account=False)
             token_source = token_env_var
         except Exception as e:
-            print(f"  ⚠️ {token_env_var} 不可用，改用默认可用 token：{e}")
+            if default_creds is None:
+                print(f"  ⚠️ 跳过 {account['email']}：{token_env_var} 不可用，且没有 Gmail OAuth 兜底 token：{e}")
+                return None, ""
+            print(f"  ⚠️ {token_env_var} 不可用，改用默认可用 Gmail OAuth token：{e}")
             creds = default_creds
-            token_source = "fallback token"
+            token_source = "fallback Gmail OAuth token"
     else:
+        if default_creds is None:
+            print(f"  ⚠️ 跳过 {account['email']}：未配置 {token_env_var} 或 GMAIL_PASS_{account_index}")
+            return None, ""
         creds = default_creds
-        token_source = "default token"
+        token_source = "default Gmail OAuth token"
 
     gmail = build("gmail", "v1", credentials=creds)
     configured_email = account["email"].lower()
@@ -770,9 +781,11 @@ def main():
     print(f"  候选范围：{start_date.strftime('%Y-%m-%d')} 至 {end_date.strftime('%Y-%m-%d')}")
     print("  规则：G=已放弃整行跳过；O列控制增量处理；thread补全我方/达人历史")
 
-    creds, creds_source = get_first_working_creds()
-    print(f"  Google token：使用 {creds_source}")
-    sheets = build("sheets", "v4", credentials=creds)
+    sheets_creds = get_creds()
+    gmail_default_creds, gmail_creds_source = get_first_working_gmail_creds()
+    print(f"  Sheets token：已初始化")
+    print(f"  Gmail OAuth 兜底 token：{gmail_creds_source}")
+    sheets = build("sheets", "v4", credentials=sheets_creds)
     cards = load_negotiation_cards()
 
     ensure_status_dropdown(sheets)
@@ -785,9 +798,11 @@ def main():
     skipped_own = 0
     skipped_empty = 0
 
-    # 1) inbox 中的达人回复作为新建/更新触发源
+    # 1) inbox 中的达人回复作为新建/更新触发源。
+    # 先列出每个邮箱候选，再轮流处理，避免第一个邮箱候选太多时挡住后续邮箱。
+    inbox_batches = []
     for account_index, account in enumerate(EMAIL_ACCOUNTS, start=1):
-        gmail, _profile_email = build_gmail_for_account(account, account_index, creds)
+        gmail, _profile_email = build_gmail_for_account(account, account_index, gmail_default_creds)
         if gmail is None:
             continue
         query = f"in:inbox to:{account['email']} {date_query}"
@@ -800,12 +815,29 @@ def main():
             continue
 
         print(f"  找到 {len(messages)} 封候选邮件")
+        inbox_batches.append({
+            "account": account,
+            "gmail": gmail,
+            "messages": messages,
+        })
 
-        for msg_ref in messages:
+    max_inbox_messages = max((len(batch["messages"]) for batch in inbox_batches), default=0)
+    if inbox_batches:
+        print(f"\n📥 轮流处理 {len(inbox_batches)} 个 inbox，共 {sum(len(batch['messages']) for batch in inbox_batches)} 封候选邮件")
+
+    for message_index in range(max_inbox_messages):
+        for batch in inbox_batches:
+            messages = batch["messages"]
+            if message_index >= len(messages):
+                continue
+
+            account = batch["account"]
+            gmail = batch["gmail"]
+            msg_ref = messages[message_index]
             try:
                 msg = read_message(gmail, msg_ref["id"])
             except Exception as e:
-                print(f"  ⚠️ 读取邮件失败：{msg_ref.get('id')} / {e}")
+                print(f"  ⚠️ 读取邮件失败：{account['email']} / {msg_ref.get('id')} / {e}")
                 continue
 
             label_ids = set(msg.get("labelIds", []))
@@ -856,7 +888,7 @@ def main():
     print(f"  沟通管理已有 {len(existing_replies_emails)} 个邮箱")
 
     for account_index, account in enumerate(EMAIL_ACCOUNTS, start=1):
-        gmail, profile_email = build_gmail_for_account(account, account_index, creds)
+        gmail, profile_email = build_gmail_for_account(account, account_index, gmail_default_creds)
         if gmail is None:
             continue
         try:
