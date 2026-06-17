@@ -355,7 +355,10 @@ def build_gmail_accounts(default_creds):
         if not os.environ.get(token_env_var, "").strip() and default_creds is None:
             print(f"  ⚠️ 跳过 {account['email']}：缺少 {token_env_var}，且 GOOGLE_TOKEN_JSON 不可用")
             continue
-        gmail_accounts.append((account, build_gmail_for_account(account, account_index, default_creds)))
+        try:
+            gmail_accounts.append((account, build_gmail_for_account(account, account_index, default_creds)))
+        except Exception as e:
+            print(f"  ⚠️ 跳过 {account['email']}：{token_env_var} 不可用 / {e}")
     return gmail_accounts
 
 
