@@ -47,6 +47,7 @@ from googleapiclient.discovery import build
 
 from config import (
     EMAIL_ACCOUNTS,
+    OUTBOX_SHEET,
     REPLIES_SHEET,
     SHEET_ID,
 )
@@ -322,7 +323,7 @@ def list_all_messages(gmail, query: str) -> list:
 def build_gmail_for_account(account: dict, account_index: int, default_creds):
     token_env_var = f"GOOGLE_TOKEN_JSON_{account_index}"
     if os.environ.get(token_env_var, "").strip():
-        creds = get_creds(token_env_var=token_env_var)
+        creds = get_creds(token_env_var=token_env_var, allow_service_account=False)
         token_source = token_env_var
     else:
         creds = default_creds
@@ -345,6 +346,17 @@ def build_gmail_for_account(account: dict, account_index: int, default_creds):
         print(f"  Gmail token：{configured_email} <- {token_source}")
 
     return gmail
+
+
+def build_gmail_accounts(default_creds):
+    gmail_accounts = []
+    for account_index, account in enumerate(EMAIL_ACCOUNTS, start=1):
+        token_env_var = f"GOOGLE_TOKEN_JSON_{account_index}"
+        if not os.environ.get(token_env_var, "").strip() and default_creds is None:
+            print(f"  ⚠️ 跳过 {account['email']}：缺少 {token_env_var}，且 GOOGLE_TOKEN_JSON 不可用")
+            continue
+        gmail_accounts.append((account, build_gmail_for_account(account, account_index, default_creds)))
+    return gmail_accounts
 
 
 def message_sent_to_target(headers: dict, target_email: str) -> bool:
@@ -493,6 +505,30 @@ def row_value(row: list, index: int) -> str:
     return row[index].strip() if len(row) > index and row[index] else ""
 
 
+def find_in_outbox(outbox_data: list, email: str) -> tuple[int, dict]:
+    email = email.strip().lower()
+    for i, row in enumerate(outbox_data[1:], start=2):
+        if len(row) > 1 and row[1].strip().lower() == email:
+            return i, {
+                "name": row_value(row, 0),
+                "email": row_value(row, 1),
+                "status": row_value(row, 5),
+            }
+    return 0, {}
+
+
+def mark_outbox_replied(sheets, outbox_data: list, email: str) -> tuple[int, str]:
+    outbox_row_i, outbox_info = find_in_outbox(outbox_data, email)
+    if not outbox_row_i:
+        return 0, ""
+
+    name = outbox_info.get("name", "")
+    if outbox_info.get("status") != "已回复":
+        update_cell(sheets, OUTBOX_SHEET, outbox_row_i, 6, "已回复")
+
+    return outbox_row_i, name
+
+
 def should_process_row(row: list) -> bool:
     email = row_value(row, 2).lower()
     if not email:
@@ -530,16 +566,23 @@ def main():
     print(f"  Claude模型：{CLAUDE_MODEL}")
     print("  规则：B/C由你填写；脚本补 A/D/E/F/G/K/L/M/N/O；只有达人有回复才补。")
 
-    creds = get_creds()
-    sheets = build("sheets", "v4", credentials=creds)
+    sheets_creds = get_creds()
+    gmail_default_creds = None
+    if os.environ.get("GOOGLE_TOKEN_JSON", "").strip():
+        try:
+            gmail_default_creds = get_creds(allow_service_account=False)
+        except Exception as e:
+            print(f"  ⚠️ GOOGLE_TOKEN_JSON 不可用，将只使用 GOOGLE_TOKEN_JSON_1~4：{e}")
+
+    sheets = build("sheets", "v4", credentials=sheets_creds)
     own_emails = {acc["email"].lower() for acc in EMAIL_ACCOUNTS}
-    gmail_accounts = [
-        (account, build_gmail_for_account(account, account_index, creds))
-        for account_index, account in enumerate(EMAIL_ACCOUNTS, start=1)
-    ]
+    gmail_accounts = build_gmail_accounts(gmail_default_creds)
+    if not gmail_accounts:
+        raise RuntimeError("没有可用的 Gmail token。请配置 GOOGLE_TOKEN_JSON_1~4，或重新生成 GOOGLE_TOKEN_JSON。")
 
     ensure_status_dropdown(sheets)
     data = get_sheet_data(sheets, REPLIES_SHEET)
+    outbox_data = get_sheet_data(sheets, OUTBOX_SHEET)
     if len(data) <= 1:
         print("  没有可处理行。")
         return
@@ -601,6 +644,7 @@ def main():
                 15: str(max_internal_date),                    # O last_processed_internalDate
             }
             batch_update_row_cells(sheets, REPLIES_SHEET, row_index, updates)
+            mark_outbox_replied(sheets, outbox_data, target_email)
             print(f"  ✅ 已补全：共 {len(items)} 封，达人回复 {influencer_count} 封")
             processed += 1
             time.sleep(1)
